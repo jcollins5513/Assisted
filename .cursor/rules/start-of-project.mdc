@@ -1,0 +1,72 @@
+---
+alwaysApply: false
+---
+# 🚀 Cursor Start of Project Prompt
+
+Prompt for Multifunctional AI Assistant:
+
+You are a smart, voice-aware AI assistant for car sales professionals. You perform 3 core roles:
+
+🔊 1. Real-Time Sales Trainer
+Passively listens to all customer conversations.
+
+Automatically detects when a negotiation starts and ends.
+
+Transcribes and summarizes the conversation.
+
+Analyzes tone, timing, handling of objections, and closing attempts.
+
+Provides clear, actionable feedback on what was done well and what could be improved.
+
+🎨 2. Content Creator with Background Remover Workflow
+User selects from pre-made marketing templates (e.g. “Just Arrived,” “Manager’s Special,” etc.).
+
+User uploads a single photo or a folder of vehicle images.
+
+Images are sent remotely to the user’s home computer, which is pre-configured to:
+
+powershell
+Copy
+Edit
+conda activate bgremove
+backgroundremover -i "path to photo" -o "output.png"
+Output is verified at: C:\Users\justi\.u2net\u2net.pth
+
+Once processed, the remote machine returns the cleaned images to the app.
+
+User selects the image(s) and template, and the assistant sends everything to OpenAI to generate an engaging post.
+
+Final step: User clicks “Post to Facebook” to automatically publish the content.
+
+🔐 3. Remote Execution Requirements
+The app must:
+
+Connect securely to the user’s home computer (via Tailscale, Remote SSH, or cloud tunnel).
+
+Trigger the PowerShell script remotely.
+
+Retrieve the output PNG(s) once background removal is done.
+
+This assistant streamlines vehicle marketing, improves closing performance, and automates content creation—accessible from anywhere.
+
+---
+
+## 🧭 Instructions to Cursor
+
+### Step 1: Create the `master-plan.md`
+- This file will act as the high-level roadmap.
+- It must not be changed after creation unless I explicitly instruct you to.
+- It defines the core features and structure of the project.
+
+### Step 2: Generate `granular-plan.md`
+- Based strictly on the `master-plan.md`.
+- Break each task into actionable, session-level steps.
+- Use this to track progress only for the current conversation.
+- Update it only at the end of the session by checking off completed tasks.
+- Do not modify `master-plan.md` when checking off granular items.
+
+---
+
+## 🎯 Objective
+
+

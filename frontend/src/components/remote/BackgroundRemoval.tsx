@@ -1,0 +1,378 @@
+'use client';
+
+import React, { useState, useRef } from 'react';
+
+interface BackgroundRemovalProps {
+  selectedConnection: string | null;
+  onConnectionSelect: (connectionId: string | null) => void;
+}
+
+interface ProcessingJob {
+  id: string;
+  inputPath: string;
+  outputPath: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  startTime: string;
+  endTime?: string;
+  error?: string;
+}
+
+export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: BackgroundRemovalProps) {
+  const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [processingSettings, setProcessingSettings] = useState({
+    model: 'u2net',
+    quality: 95,
+    batchMode: false
+  });
+  const [isProcessing, setIsProcessing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    setSelectedFiles(files);
+  };
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    const files = Array.from(event.dataTransfer.files);
+    setSelectedFiles(files);
+  };
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+  };
+
+  const startProcessing = async () => {
+    if (!selectedConnection) {
+      alert('Please select a remote connection first');
+      return;
+    }
+
+    if (selectedFiles.length === 0) {
+      alert('Please select files to process');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    // Create processing jobs for each file
+    const newJobs: ProcessingJob[] = selectedFiles.map((file, index) => ({
+      id: `job-${Date.now()}-${index}`,
+      inputPath: `/uploads/${file.name}`,
+      outputPath: `/processed/${file.name.replace(/\.[^/.]+$/, '.png')}`,
+      status: 'pending',
+      progress: 0,
+      startTime: new Date().toISOString()
+    }));
+
+    setProcessingJobs(prev => [...prev, ...newJobs]);
+
+    // Simulate processing for each job
+    for (const job of newJobs) {
+      await simulateProcessing(job.id);
+    }
+
+    setIsProcessing(false);
+    setSelectedFiles([]);
+  };
+
+  const simulateProcessing = async (jobId: string) => {
+    // Update job status to processing
+    setProcessingJobs(prev => 
+      prev.map(job => 
+        job.id === jobId 
+          ? { ...job, status: 'processing' as const }
+          : job
+      )
+    );
+
+    // Simulate progress updates
+    for (let progress = 0; progress <= 100; progress += 10) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      setProcessingJobs(prev => 
+        prev.map(job => 
+          job.id === jobId 
+            ? { ...job, progress }
+            : job
+        )
+      );
+    }
+
+    // Complete the job
+    setProcessingJobs(prev => 
+      prev.map(job => 
+        job.id === jobId 
+          ? { 
+              ...job, 
+              status: 'completed' as const, 
+              progress: 100,
+              endTime: new Date().toISOString()
+            }
+          : job
+      )
+    );
+  };
+
+  const removeJob = (jobId: string) => {
+    setProcessingJobs(prev => prev.filter(job => job.id !== jobId));
+  };
+
+  const downloadResult = (job: ProcessingJob) => {
+    // In a real implementation, this would download the processed file
+    alert(`Downloading: ${job.outputPath}`);
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'text-green-600';
+      case 'processing': return 'text-blue-600';
+      case 'failed': return 'text-red-600';
+      default: return 'text-gray-600';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed': return '✅';
+      case 'processing': return '⏳';
+      case 'failed': return '❌';
+      default: return '⏸️';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Background Removal</h2>
+          <p className="text-sm text-gray-600">
+            Remove backgrounds from images using AI processing on remote servers
+          </p>
+        </div>
+        {!selectedConnection && (
+          <div className="text-sm text-orange-600 bg-orange-50 px-3 py-2 rounded-lg">
+            ⚠️ Please select a remote connection first
+          </div>
+        )}
+      </div>
+
+      {/* Connection Selection */}
+      {!selectedConnection && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-yellow-800 mb-2">No Connection Selected</h3>
+          <p className="text-sm text-yellow-700 mb-3">
+            You need to select a remote connection to process images. Go to the Connections tab to set up a connection.
+          </p>
+          <button
+            onClick={() => onConnectionSelect('1')} // Select first available connection
+            className="px-3 py-1 text-sm bg-yellow-600 hover:bg-yellow-700 text-white rounded transition-colors"
+          >
+            Use Demo Connection
+          </button>
+        </div>
+      )}
+
+      {/* File Upload */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Upload Images</h3>
+        
+        <div
+          className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors"
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+        >
+          <div className="space-y-4">
+            <div className="text-4xl">📁</div>
+            <div>
+              <p className="text-lg font-medium text-gray-900">
+                Drop images here or click to browse
+              </p>
+              <p className="text-sm text-gray-500">
+                Supports JPG, PNG, BMP, TIFF files
+              </p>
+            </div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+            >
+              Select Files
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+          </div>
+        </div>
+
+        {selectedFiles.length > 0 && (
+          <div className="mt-4">
+            <h4 className="text-sm font-medium text-gray-900 mb-2">Selected Files ({selectedFiles.length})</h4>
+            <div className="space-y-2">
+              {selectedFiles.map((file, index) => (
+                <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                  <span className="text-sm text-gray-700">{file.name}</span>
+                  <span className="text-xs text-gray-500">
+                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Processing Settings */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Processing Settings</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              AI Model
+            </label>
+            <select
+              value={processingSettings.model}
+              onChange={(e) => setProcessingSettings({ ...processingSettings, model: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="u2net">U²-Net (Recommended)</option>
+              <option value="u2netp">U²-Net (Lightweight)</option>
+              <option value="u2net_human_seg">U²-Net (Human Segmentation)</option>
+              <option value="silueta">Silueta</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Quality
+            </label>
+            <input
+              type="range"
+              min="50"
+              max="100"
+              value={processingSettings.quality}
+              onChange={(e) => setProcessingSettings({ ...processingSettings, quality: parseInt(e.target.value) })}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>50%</span>
+              <span>{processingSettings.quality}%</span>
+              <span>100%</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="batchMode"
+              checked={processingSettings.batchMode}
+              onChange={(e) => setProcessingSettings({ ...processingSettings, batchMode: e.target.checked })}
+              className="mr-2"
+            />
+            <label htmlFor="batchMode" className="text-sm font-medium text-gray-700">
+              Batch Mode
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Process Button */}
+      <div className="flex justify-center">
+        <button
+          onClick={startProcessing}
+          disabled={!selectedConnection || selectedFiles.length === 0 || isProcessing}
+          className="px-8 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isProcessing ? 'Processing...' : 'Start Background Removal'}
+        </button>
+      </div>
+
+      {/* Processing Jobs */}
+      {processingJobs.length > 0 && (
+        <div className="bg-white rounded-lg shadow">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">Processing Jobs</h3>
+          </div>
+          <div className="divide-y divide-gray-200">
+            {processingJobs.map((job) => (
+              <div key={job.id} className="p-6">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-lg">{getStatusIcon(job.status)}</span>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-900">
+                        {job.inputPath.split('/').pop()}
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Started: {new Date(job.startTime).toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-sm font-medium ${getStatusColor(job.status)}`}>
+                      {job.status}
+                    </span>
+                    {job.status === 'completed' && (
+                      <button
+                        onClick={() => downloadResult(job)}
+                        className="px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+                      >
+                        Download
+                      </button>
+                    )}
+                    <button
+                      onClick={() => removeJob(job.id)}
+                      className="px-2 py-1 text-xs bg-gray-500 hover:bg-gray-600 text-white rounded transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                
+                {job.status === 'processing' && (
+                  <div className="mt-2">
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span>Progress</span>
+                      <span>{job.progress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${job.progress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+                
+                {job.error && (
+                  <div className="mt-2 text-sm text-red-600">
+                    Error: {job.error}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tips */}
+      <div className="bg-blue-50 rounded-lg p-4">
+        <h4 className="text-sm font-medium text-blue-900 mb-2">Background Removal Tips</h4>
+        <ul className="text-sm text-blue-800 space-y-1">
+          <li>• U²-Net provides the best overall results for most images</li>
+          <li>• Higher quality settings produce better results but take longer</li>
+          <li>• Batch mode is efficient for processing multiple images</li>
+          <li>• Ensure your remote server has sufficient processing power</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
