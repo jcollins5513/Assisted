@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import { apiClient } from '@/services/api';
 
 interface BackgroundRemovalProps {
   selectedConnection: string | null;
@@ -57,25 +58,79 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
 
     setIsProcessing(true);
 
-    // Create processing jobs for each file
-    const newJobs: ProcessingJob[] = selectedFiles.map((file, index) => ({
-      id: `job-${Date.now()}-${index}`,
-      inputPath: `/uploads/${file.name}`,
-      outputPath: `/processed/${file.name.replace(/\.[^/.]+$/, '.png')}`,
-      status: 'pending',
-      progress: 0,
-      startTime: new Date().toISOString()
-    }));
+    try {
+      // Upload files to server
+      const uploadedPaths: string[] = [];
+      for (const file of selectedFiles) {
+        const res = await apiClient.upload<any>('/uploads/image', file);
+        if (!res.success) throw new Error(res.error || 'Upload failed');
+        const filePath = res.data?.file?.path || res.data?.path || '';
+        if (!filePath) throw new Error('Upload response missing file path');
+        uploadedPaths.push(filePath);
+      }
 
-    setProcessingJobs(prev => [...prev, ...newJobs]);
+      // Create processing jobs
+      const newJobs: ProcessingJob[] = uploadedPaths.map((p, idx) => ({
+        id: `job-${Date.now()}-${idx}`,
+        inputPath: p,
+        outputPath: '',
+        status: 'pending',
+        progress: 0,
+        startTime: new Date().toISOString()
+      }));
+      setProcessingJobs(prev => [...prev, ...newJobs]);
 
-    // Simulate processing for each job
-    for (const job of newJobs) {
-      await simulateProcessing(job.id);
+      // Remote paths (user-adjustable in settings later)
+      const remoteScriptPath = 'C\\\\Tools\\\\backgroundremover-cli.ps1';
+      const remoteInputDir = 'C\\\\processing\\\\in';
+      const remoteOutputDir = 'C\\\\processing\\\\out';
+
+      // Batch mode by copying a folder: use the server upload folder as input parent
+      // For simplicity here, we treat as folder if >1 file
+      const isBatch = uploadedPaths.length > 1;
+      const inputPath = isBatch ? uploadedPaths[0].replace(/[^\\/]*$/, '') : uploadedPaths[0];
+
+      // Kick off remote execution
+      const startRes = await apiClient.post<any>('/remote-execution/background-removal', {
+        connectionId: selectedConnection,
+        engine: 'backgroundremover',
+        inputPath,
+        model: processingSettings.model,
+        batchMode: isBatch,
+        alphaMatting: true,
+        remoteScriptPath,
+        remoteInputDir,
+        remoteOutputDir
+      });
+      if (!startRes.success) throw new Error(startRes.error || 'Failed to start background removal');
+
+      // Simulate progress while remote runs
+      for (const job of newJobs) {
+        await simulateProcessing(job.id);
+      }
+
+      // Finalize: copy results back
+      const finalizeRes = await apiClient.post<any>('/remote-execution/background-removal/finalize', {
+        connectionId: selectedConnection,
+        remoteOutputDir
+      });
+      if (!finalizeRes.success) throw new Error(finalizeRes.error || 'Failed to finalize');
+
+      const files: Array<{ file: string; url: string }> = finalizeRes.data?.data?.files || finalizeRes.data?.files || [];
+
+      // Update jobs with output paths
+      setProcessingJobs(prev => prev.map(j => {
+        const match = files.find(f => f.file.toLowerCase().includes(j.inputPath.split(/[/\\]/).pop()?.split('.')[0].toLowerCase() || ''));
+        return match ? { ...j, status: 'completed', progress: 100, endTime: new Date().toISOString(), outputPath: match.url } : j;
+      }));
+    } catch (err: any) {
+      // Mark all current jobs as failed
+      setProcessingJobs(prev => prev.map(j => ({ ...j, status: 'failed', error: err?.message || 'Processing failed' })));
+      alert(err?.message || 'Processing failed');
+    } finally {
+      setIsProcessing(false);
+      setSelectedFiles([]);
     }
-
-    setIsProcessing(false);
-    setSelectedFiles([]);
   };
 
   const simulateProcessing = async (jobId: string) => {
@@ -376,3 +431,4 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
     </div>
   );
 }
+  

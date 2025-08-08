@@ -335,6 +335,105 @@ export class RemoteExecutionService extends EventEmitter {
     return `powershell.exe ${joined}`;
   }
 
+  async ensureRemoteDirectory(connectionId: string, remoteDirectoryPath: string): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) {
+      throw new Error('Connection not found');
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const sshArgs: string[] = [];
+
+      if (connection.keyPath) {
+        sshArgs.push('-i', connection.keyPath);
+      }
+
+      if (connection.port) {
+        sshArgs.push('-p', String(connection.port));
+      }
+
+      const target = connection.username
+        ? `${connection.username}@${connection.host}`
+        : connection.host;
+      sshArgs.push(target);
+
+      const ps = `powershell.exe -NoProfile -Command \"New-Item -ItemType Directory -Path '${remoteDirectoryPath}' -Force | Out-Null\"`;
+      sshArgs.push(ps);
+
+      const child = spawn('ssh', sshArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      let errorOutput = '';
+      child.stderr?.on('data', (d) => (errorOutput += d.toString()));
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`ensureRemoteDirectory failed (${code}): ${errorOutput}`));
+      });
+      child.on('error', reject);
+    });
+  }
+
+  async copyFileFromRemote(
+    connectionId: string,
+    remotePath: string,
+    localDestinationDirectory: string
+  ): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) {
+      throw new Error('Connection not found');
+    }
+
+    return new Promise((resolve, reject) => {
+      const scpArgs: string[] = [];
+
+      if (connection.keyPath) scpArgs.push('-i', connection.keyPath);
+      if (connection.port) scpArgs.push('-P', String(connection.port));
+
+      const source = connection.username
+        ? `${connection.username}@${connection.host}:${remotePath}`
+        : `${connection.host}:${remotePath}`;
+
+      scpArgs.push(source, localDestinationDirectory);
+
+      const child = spawn('scp', scpArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      let errorOutput = '';
+      child.stderr?.on('data', (d) => (errorOutput += d.toString()));
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`SCP (from remote) failed (${code}): ${errorOutput}`));
+      });
+      child.on('error', reject);
+    });
+  }
+
+  async copyDirectoryFromRemote(
+    connectionId: string,
+    remoteDirectory: string,
+    localDestinationDirectory: string
+  ): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) {
+      throw new Error('Connection not found');
+    }
+
+    return new Promise((resolve, reject) => {
+      const scpArgs: string[] = ['-r'];
+      if (connection.keyPath) scpArgs.push('-i', connection.keyPath);
+      if (connection.port) scpArgs.push('-P', String(connection.port));
+      const source = connection.username
+        ? `${connection.username}@${connection.host}:${remoteDirectory}`
+        : `${connection.host}:${remoteDirectory}`;
+      scpArgs.push(source, localDestinationDirectory);
+
+      const child = spawn('scp', scpArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      let errorOutput = '';
+      child.stderr?.on('data', (d) => (errorOutput += d.toString()));
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`SCP dir (from remote) failed (${code}): ${errorOutput}`));
+      });
+      child.on('error', reject);
+    });
+  }
+
   private updateExecutionProgress(executionId: string, outputLength: number): void {
     const execution = this.executions.get(executionId);
     if (execution) {

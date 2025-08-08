@@ -3,6 +3,8 @@ import { RemoteExecutionService, RemoteConnection, ScriptExecution } from '../se
 import { authMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/errorHandler';
 import path from 'path'; // Added missing import for path
+import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 const remoteService = new RemoteExecutionService();
@@ -194,8 +196,8 @@ router.post('/background-removal', authMiddleware, async (req, res, next) => {
   try {
     const { 
       connectionId,
-      inputPath,
-      outputPath,
+      inputPath,          // local server path or remote folder if remoteScriptPath provided
+      outputPath,         // desired output path (remote or local depending on mode)
       model,
       batchMode,
       alphaMatting,
@@ -208,7 +210,9 @@ router.post('/background-removal', authMiddleware, async (req, res, next) => {
       overlayVideoPath,
       overlayImagePath,
       engine, // 'backgroundremover' | 'rembg'
-      remoteScriptPath // Optional: absolute path on remote host for PowerShell script
+      remoteScriptPath, // Optional: absolute path on remote host for PowerShell script
+      remoteInputDir,   // Optional: where to copy inputs on remote host (e.g., C:\processing\in)
+      remoteOutputDir   // Optional: where outputs are written on remote host (e.g., C:\processing\out)
     } = req.body;
     
     if (!connectionId || !inputPath) {
@@ -242,15 +246,48 @@ router.post('/background-removal', authMiddleware, async (req, res, next) => {
       if (batchMode) parameters.BatchMode = true;
     }
     
-    // Select script
-    let script: string;
-    if (remoteScriptPath && typeof remoteScriptPath === 'string') {
-      script = remoteScriptPath; // Use provided absolute path on remote host
-    } else {
-      script = useBackgroundRemover
-        ? path.join(__dirname, '../../scripts/backgroundremover-cli.ps1')
-        : path.join(__dirname, '../../scripts/background-removal.ps1');
+    // If remoteScriptPath is provided, we assume running entirely on remote host
+    if (remoteScriptPath) {
+      // Ensure remote directories
+      if (!remoteInputDir || !remoteOutputDir) {
+        return next(createError('remoteInputDir and remoteOutputDir are required when using remoteScriptPath', 400));
+      }
+
+      await remoteService.ensureRemoteDirectory(connectionId, remoteInputDir);
+      await remoteService.ensureRemoteDirectory(connectionId, remoteOutputDir);
+
+      // Copy input (file or folder) to remote
+      const serverPath = inputPath as string;
+      const isDirectory = fs.existsSync(serverPath) && fs.lstatSync(serverPath).isDirectory();
+      if (isDirectory) {
+        await remoteService.copyDirectoryToRemote(connectionId, serverPath, remoteInputDir);
+      } else {
+        await remoteService.copyFileToRemote(connectionId, serverPath, path.join(remoteInputDir, path.basename(serverPath)));
+      }
+
+      // Run script on remote against the remote input/output
+      const remoteParams = {
+        ...parameters,
+        InputPath: remoteInputDir,
+        OutputPath: remoteOutputDir
+      };
+      const executionId = await remoteService.executeScript(connectionId, remoteScriptPath, remoteParams);
+
+      return res.status(201).json({
+        success: true,
+        data: {
+          executionId,
+          status: 'started',
+          operation: 'background-removal',
+          engine: useBackgroundRemover ? 'backgroundremover' : 'rembg'
+        }
+      });
     }
+
+    // Local run (server executes PowerShell locally). Assumes inputPath is available to server
+    const script = useBackgroundRemover
+      ? path.join(__dirname, '../../scripts/backgroundremover-cli.ps1')
+      : path.join(__dirname, '../../scripts/background-removal.ps1');
 
     const executionId = await remoteService.executeScript(connectionId, script, parameters);
     
@@ -283,3 +320,33 @@ router.get('/connections/:id/health', authMiddleware, async (req, res, next) => 
 });
 
 export default router;
+ 
+// Finalize background removal: copy results back to server uploads and return URLs
+router.post('/background-removal/finalize', authMiddleware, async (req, res, next) => {
+  try {
+    const { connectionId, remoteOutputDir } = req.body as { connectionId: string; remoteOutputDir: string };
+    if (!connectionId || !remoteOutputDir) {
+      return next(createError('connectionId and remoteOutputDir are required', 400));
+    }
+
+    const localProcessedDir = path.join(__dirname, '../../uploads/processed');
+    if (!fs.existsSync(localProcessedDir)) {
+      fs.mkdirSync(localProcessedDir, { recursive: true });
+    }
+
+    // Copy remote folder to server processed directory
+    await remoteService.copyDirectoryFromRemote(connectionId, remoteOutputDir, localProcessedDir);
+
+    // Collect file URLs
+    const files = fs.readdirSync(localProcessedDir)
+      .filter(f => !f.startsWith('.'))
+      .map(f => ({
+        file: f,
+        url: `/uploads/processed/${f}`
+      }));
+
+    res.json({ success: true, data: { files } });
+  } catch (error) {
+    next(createError(`Failed to finalize background removal: ${error instanceof Error ? error.message : 'Unknown error'}`, 500));
+  }
+});
