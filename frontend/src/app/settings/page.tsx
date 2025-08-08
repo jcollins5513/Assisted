@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
+import { apiClient } from '@/services/api';
 
 export default function SettingsPage() {
   const [theme, setTheme] = useState('light');
@@ -10,6 +11,26 @@ export default function SettingsPage() {
     push: true,
     sms: false,
   });
+  const [remoteProcessing, setRemoteProcessing] = useState({
+    remoteScriptPath: 'C\\\\Tools\\\\backgroundremover-cli.ps1',
+    remoteInputDir: 'C\\\\processing\\\\in',
+    remoteOutputDir: 'C\\\\processing\\\\out',
+    defaultModel: 'u2net' as 'u2net' | 'u2netp' | 'u2net_human_seg',
+    pythonPath: ''
+  });
+
+  useEffect(() => {
+    // Load user profile to prefill preferences
+    (async () => {
+      const res = await apiClient.get<any>('/users/profile');
+      if (res.success && (res.data as any)?.user?.preferences?.remoteProcessing) {
+        setRemoteProcessing({
+          ...remoteProcessing,
+          ...(res.data as any).user.preferences.remoteProcessing
+        });
+      }
+    })();
+  }, []);
 
   return (
     <DashboardLayout>
@@ -38,6 +59,16 @@ export default function SettingsPage() {
                     id="name"
                     defaultValue="John Doe"
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Python Path (conda env)</label>
+                  <input
+                    type="text"
+                    value={remoteProcessing.pythonPath}
+                    onChange={(e) => setRemoteProcessing({ ...remoteProcessing, pythonPath: e.target.value })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="C\\\\Users\\\\justi\\\\miniconda3\\\\envs\\\\bgremover\\\\python.exe"
                   />
                 </div>
                 <div>
@@ -102,6 +133,59 @@ export default function SettingsPage() {
                       </label>
                     ))}
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Remote Processing Settings */}
+          <div className="bg-white shadow rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Remote Background Removal</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Remote Script Path</label>
+                  <input
+                    type="text"
+                    value={remoteProcessing.remoteScriptPath}
+                    onChange={(e) => setRemoteProcessing({ ...remoteProcessing, remoteScriptPath: e.target.value })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="C\\Tools\\backgroundremover-cli.ps1"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Remote Input Directory</label>
+                    <input
+                      type="text"
+                      value={remoteProcessing.remoteInputDir}
+                      onChange={(e) => setRemoteProcessing({ ...remoteProcessing, remoteInputDir: e.target.value })}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="C\\processing\\in"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Remote Output Directory</label>
+                    <input
+                      type="text"
+                      value={remoteProcessing.remoteOutputDir}
+                      onChange={(e) => setRemoteProcessing({ ...remoteProcessing, remoteOutputDir: e.target.value })}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="C\\processing\\out"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Model</label>
+                  <select
+                    value={remoteProcessing.defaultModel}
+                    onChange={(e) => setRemoteProcessing({ ...remoteProcessing, defaultModel: e.target.value as any })}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  >
+                    <option value="u2net">u2net (recommended)</option>
+                    <option value="u2netp">u2netp</option>
+                    <option value="u2net_human_seg">u2net_human_seg</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -197,6 +281,11 @@ export default function SettingsPage() {
         <div className="flex justify-end">
           <button
             type="button"
+            onClick={async () => {
+              await apiClient.put('/users/profile', {
+                preferences: { remoteProcessing }
+              });
+            }}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
             Save Changes

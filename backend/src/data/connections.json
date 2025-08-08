@@ -1,0 +1,21 @@
+[
+  {
+    "name": "jcs_build",
+    "type": "tailscale",
+    "host": "100.92.127.123",
+    "port": 22,
+    "id": "r5vr0zc61",
+    "status": "disconnected",
+    "lastConnected": "2025-08-08T09:47:55.861Z"
+  },
+  {
+    "name": "jcs",
+    "type": "ssh",
+    "host": "100.92.127.123",
+    "port": 22,
+    "username": "justi",
+    "keyPath": "C:\\Users\\justi\\.ssh\\car-sales-ai_automation_ed25519",
+    "id": "6ppkonaen",
+    "status": "disconnected"
+  }
+]

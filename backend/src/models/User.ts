@@ -16,6 +16,13 @@ export interface IUser extends Document {
     notifications: boolean;
     voiceRecording: boolean;
     autoAnalysis: boolean;
+    remoteProcessing?: {
+      remoteScriptPath?: string;
+      remoteInputDir?: string;
+      remoteOutputDir?: string;
+      defaultModel?: 'u2net' | 'u2netp' | 'u2net_human_seg';
+      pythonPath?: string;
+    };
   };
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
@@ -79,6 +86,13 @@ const userSchema = new Schema<IUser>({
     autoAnalysis: {
       type: Boolean,
       default: true
+    },
+    remoteProcessing: {
+      remoteScriptPath: { type: String },
+      remoteInputDir: { type: String },
+      remoteOutputDir: { type: String },
+      defaultModel: { type: String, enum: ['u2net', 'u2netp', 'u2net_human_seg'] },
+      pythonPath: { type: String }
     }
   }
 }, {
@@ -99,8 +113,8 @@ userSchema.pre('save', async function(next) {
 });
 
 // Compare password method
-userSchema.methods.comparePassword = async function(candidatePassword: string): Promise<boolean> {
-  return bcrypt.compare(candidatePassword, this.password);
+userSchema.methods['comparePassword'] = async function(candidatePassword: string): Promise<boolean> {
+  return bcrypt.compare(candidatePassword, (this as any)['password']);
 };
 
 // Virtual for full name
@@ -111,8 +125,9 @@ userSchema.virtual('fullName').get(function() {
 // Ensure virtual fields are serialized
 userSchema.set('toJSON', {
   virtuals: true,
-  transform: function(doc, ret) {
-    delete ret.password;
+  transform: function(_doc, ret) {
+    // Remove password from serialized output
+    Reflect.deleteProperty(ret as any, 'password');
     return ret;
   }
 });

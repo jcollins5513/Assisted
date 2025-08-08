@@ -40,7 +40,10 @@ param(
     [string]$OverlayImagePath, # -toi
 
     [Parameter(Mandatory=$false)]
-    [string]$LogFile = ""
+    [string]$LogFile = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$PythonPath = ""
 )
 
 # BackgroundRemover CLI wrapper
@@ -59,16 +62,18 @@ function Write-Log {
 
 function Test-BackgroundRemover {
     try {
-        Write-Log 'Checking Python installation...'
-        $null = & python --version 2>&1
+        $pythonExe = $PythonPath
+        if (-not $pythonExe) { $pythonExe = 'python' }
+        Write-Log "Checking Python installation... ($pythonExe)"
+        $null = & $pythonExe --version 2>&1
         if ($LASTEXITCODE -ne 0) { throw 'Python not found in PATH' }
 
         Write-Log 'Checking BackgroundRemover module...'
-        $null = & python -c "import backgroundremover" 2>&1
+        $null = & $pythonExe -c "import backgroundremover" 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Log 'backgroundremover not found. Installing via pip...' 'WARN'
-            & pip install --upgrade pip | Out-Null
-            & pip install backgroundremover | Out-Null
+            & $pythonExe -m pip install --upgrade pip | Out-Null
+            & $pythonExe -m pip install backgroundremover | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Failed to install backgroundremover via pip' }
         } else {
             Write-Log 'backgroundremover module available'
@@ -126,11 +131,13 @@ try {
 
     Test-BackgroundRemover
 
-    $args = Build-Args
+    $cliArgs = Build-Args
 
-    Write-Log ("Running: python {0}" -f ($args -join ' '))
+    $pythonExe = $PythonPath
+    if (-not $pythonExe) { $pythonExe = 'python' }
+    Write-Log ("Running: {0} {1}" -f $pythonExe, ($cliArgs -join ' '))
 
-    & python @args
+    & $pythonExe @cliArgs
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -eq 0) {

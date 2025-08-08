@@ -47,8 +47,9 @@ class ApiClient {
   }
 
   // Handle API errors
-  private handleError(error: any): ApiError {
-    if (error.response) {
+  private handleError(err: unknown): ApiError {
+    const error = err as any;
+    if (error?.response) {
       // Server responded with error status
       const status = error.response.status;
       const data = error.response.data;
@@ -71,12 +72,12 @@ class ApiClient {
         default:
           return { message: data?.message || 'An error occurred', status };
       }
-    } else if (error.request) {
+    } else if (error?.request) {
       // Network error
       return { message: 'Network error. Please check your connection.', status: 0 };
     } else {
-      // Other error
-      return { message: error.message || 'An unexpected error occurred', status: 0 };
+      const msg = (error && error.message) ? error.message : 'An unexpected error occurred';
+      return { message: msg, status: 0 };
     }
   }
 
@@ -104,7 +105,8 @@ class ApiClient {
         lastError = error;
         
         // Don't retry on client errors (4xx)
-        if (error.response && error.response.status >= 400 && error.response.status < 500) {
+        const resp = (error as any)?.response;
+        if (resp && resp.status >= 400 && resp.status < 500) {
           throw error;
         }
 
@@ -203,16 +205,11 @@ class ApiClient {
   // File upload method
   async upload<T>(endpoint: string, file: File, onProgress?: (progress: number) => void): Promise<ApiResponse<T>> {
     const formData = new FormData();
-    formData.append('file', file);
+    // Backend expects field name 'image'
+    formData.append('image', file);
 
     const url = `${this.baseURL}${endpoint}`;
-    const config: RequestInit = {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.getAuthToken()}`,
-      },
-      body: formData,
-    };
+    const token = this.getAuthToken();
 
     try {
       const xhr = new XMLHttpRequest();
@@ -228,10 +225,10 @@ class ApiClient {
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              const data = JSON.parse(xhr.responseText);
-              resolve({ success: true, data });
+              const data = JSON.parse(xhr.responseText) as T;
+              resolve({ success: true, data: data as any });
             } catch {
-              resolve({ success: true, data: xhr.responseText });
+              resolve({ success: true, data: xhr.responseText as any });
             }
           } else {
             const error = this.handleError({ response: { status: xhr.status, data: xhr.responseText } });
@@ -244,7 +241,10 @@ class ApiClient {
           resolve({ success: false, error: error.message });
         });
 
-        xhr.open('POST', url);
+        xhr.open('POST', url, true);
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
         xhr.send(formData);
       });
     } catch (error) {
@@ -265,7 +265,8 @@ export const API_ENDPOINTS = {
     REGISTER: '/auth/register',
     LOGOUT: '/auth/logout',
     REFRESH: '/auth/refresh',
-    VERIFY: '/auth/verify',
+    VERIFY: '/auth/me',
+    ME: '/auth/me',
   },
   
   // Users
@@ -317,4 +318,4 @@ export const API_ENDPOINTS = {
 } as const;
 
 // Export types for use in components
-export type { ApiResponse, ApiError };
+// types exported above

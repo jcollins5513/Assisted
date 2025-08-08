@@ -4,10 +4,12 @@ import { apiClient, API_ENDPOINTS } from './api';
 export interface User {
   id: string;
   email: string;
-  name: string;
-  role: 'admin' | 'sales_manager' | 'sales_representative';
+  firstName?: string;
+  lastName?: string;
+  role: 'salesperson' | 'manager' | 'admin' | 'sales_manager' | 'sales_representative';
   avatar?: string;
-  settings?: UserSettings;
+  preferences?: any;
+  settings?: UserSettings; // fallback client-side settings
   createdAt: string;
   updatedAt: string;
 }
@@ -42,7 +44,7 @@ export interface RegisterData {
 export interface AuthResponse {
   user: User;
   token: string;
-  refreshToken: string;
+  refreshToken?: string;
 }
 
 // Authentication Service Class
@@ -94,7 +96,7 @@ class AuthService {
         const { user, token, refreshToken } = response.data;
         
         // Store authentication data
-        this.setAuthData(user, token, refreshToken);
+        this.setAuthData(user, token, refreshToken || '');
         
         return { success: true, user };
       } else {
@@ -108,13 +110,24 @@ class AuthService {
   // Register new user
   async register(data: RegisterData): Promise<{ success: boolean; user?: User; error?: string }> {
     try {
-      const response = await apiClient.post<AuthResponse>(API_ENDPOINTS.AUTH.REGISTER, data);
+      // Backend expects firstName, lastName, dealership
+      const [firstName, ...rest] = (data.name || '').split(' ');
+      const lastName = rest.join(' ') || 'User';
+      const payload: any = {
+        email: data.email,
+        password: data.password,
+        firstName: firstName || data.email.split('@')[0],
+        lastName,
+        dealership: 'Default Dealership',
+        role: data.role || 'salesperson',
+      };
+      const response = await apiClient.post<AuthResponse>(API_ENDPOINTS.AUTH.REGISTER, payload);
       
       if (response.success && response.data) {
         const { user, token, refreshToken } = response.data;
         
         // Store authentication data
-        this.setAuthData(user, token, refreshToken);
+        this.setAuthData(user, token, refreshToken || '');
         
         return { success: true, user };
       } else {
@@ -141,7 +154,7 @@ class AuthService {
   // Refresh authentication token
   async refreshToken(): Promise<boolean> {
     try {
-      const refreshToken = localStorage.getItem('refreshToken');
+      const refreshToken = localStorage.getItem('refreshToken') || localStorage.getItem('authToken');
       
       if (!refreshToken) {
         this.clearAuth();
@@ -149,14 +162,14 @@ class AuthService {
       }
 
       const response = await apiClient.post<AuthResponse>(API_ENDPOINTS.AUTH.REFRESH, {
-        refreshToken,
+        token: refreshToken,
       });
 
       if (response.success && response.data) {
         const { user, token, refreshToken: newRefreshToken } = response.data;
         
         // Update stored authentication data
-        this.setAuthData(user, token, newRefreshToken);
+        this.setAuthData(user, token, newRefreshToken || '');
         
         return true;
       } else {
@@ -172,8 +185,14 @@ class AuthService {
   // Verify current token
   async verifyToken(): Promise<boolean> {
     try {
-      const response = await apiClient.get(API_ENDPOINTS.AUTH.VERIFY);
-      return response.success;
+      // Use /auth/me to validate token and refresh user info
+      const response = await apiClient.get<{ user: User }>(API_ENDPOINTS.AUTH.ME || '/auth/me');
+      if (response.success && (response.data as any)?.user) {
+        this.currentUser = (response.data as any).user;
+        this.updateStoredUser(this.currentUser);
+        return true;
+      }
+      return false;
     } catch (error) {
       return false;
     }
@@ -242,7 +261,7 @@ class AuthService {
     if (typeof window !== 'undefined') {
       localStorage.setItem('user', JSON.stringify(user));
       localStorage.setItem('authToken', token);
-      localStorage.setItem('refreshToken', refreshToken);
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
     }
     
     this.setupTokenRefresh();

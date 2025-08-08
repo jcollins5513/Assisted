@@ -6,7 +6,7 @@ import * as path from 'path';
 export interface RemoteConnection {
   id: string;
   name: string;
-  type: 'tailscale' | 'ssh' | 'cloud-tunnel';
+  type: 'local' | 'tailscale' | 'ssh' | 'cloud-tunnel';
   host: string;
   port?: number;
   username?: string; // Optional SSH username for remote execution
@@ -175,7 +175,7 @@ export class RemoteExecutionService extends EventEmitter {
   }
 
   // Connection Methods
-  private async connectTailscale(connection: RemoteConnection): Promise<void> {
+  private async connectTailscale(_connection: RemoteConnection): Promise<void> {
     // Simulate Tailscale connection
     await new Promise(resolve => setTimeout(resolve, 2000));
     
@@ -186,7 +186,7 @@ export class RemoteExecutionService extends EventEmitter {
     // 4. Verify connectivity
   }
 
-  private async connectSSH(connection: RemoteConnection): Promise<void> {
+  private async connectSSH(_connection: RemoteConnection): Promise<void> {
     // Simulate SSH connection
     await new Promise(resolve => setTimeout(resolve, 1500));
     
@@ -196,7 +196,7 @@ export class RemoteExecutionService extends EventEmitter {
     // 3. Verify connection is stable
   }
 
-  private async connectCloudTunnel(connection: RemoteConnection): Promise<void> {
+  private async connectCloudTunnel(_connection: RemoteConnection): Promise<void> {
     // Simulate cloud tunnel connection
     await new Promise(resolve => setTimeout(resolve, 3000));
     
@@ -213,7 +213,7 @@ export class RemoteExecutionService extends EventEmitter {
     parameters: Record<string, any>,
     executionId: string
   ): Promise<string> {
-    // If the connection is remote (tailscale/ssh/cloud-tunnel), execute over SSH
+    // If the connection is remote (not local), execute over SSH
     if (['tailscale', 'ssh', 'cloud-tunnel'].includes(connection.type)) {
       return this.runScriptOverSsh(connection, scriptPath, parameters, executionId);
     }
@@ -260,26 +260,26 @@ export class RemoteExecutionService extends EventEmitter {
     executionId: string
   ): Promise<string> {
     return new Promise((resolve, reject) => {
-      const sshArgs: string[] = [];
+      const pwshArgs = this.buildScriptArguments(scriptPath, parameters);
+      const remoteCommand = this.buildRemotePowershellCommand(pwshArgs);
 
-      if (connection.keyPath) {
-        sshArgs.push('-i', connection.keyPath);
-      }
-
-      if (connection.port) {
-        sshArgs.push('-p', String(connection.port));
-      }
+      let cmd = 'ssh';
+      const args: string[] = [];
 
       const target = connection.username
         ? `${connection.username}@${connection.host}`
         : connection.host;
-      sshArgs.push(target);
 
-      const pwshArgs = this.buildScriptArguments(scriptPath, parameters);
-      const remoteCommand = this.buildRemotePowershellCommand(pwshArgs);
-      sshArgs.push(remoteCommand);
+      if (connection.type === 'tailscale') {
+        cmd = 'tailscale';
+        args.push('ssh', target, remoteCommand);
+      } else {
+        if (connection.keyPath) args.push('-i', connection.keyPath);
+        if (connection.port) args.push('-p', String(connection.port));
+        args.push(target, remoteCommand);
+      }
 
-      const child = spawn('ssh', sshArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
       this.processes.set(executionId, child);
 
@@ -315,7 +315,15 @@ export class RemoteExecutionService extends EventEmitter {
     const args = ['-ExecutionPolicy', 'Bypass', '-File', scriptPath];
     
     for (const [key, value] of Object.entries(parameters)) {
-      args.push(`-${key}`, value.toString());
+      if (typeof value === 'boolean') {
+        if (value === true) {
+          // PowerShell switch param: pass only -Key (no value)
+          args.push(`-${key}`);
+        }
+        // Skip false booleans entirely
+      } else {
+        args.push(`-${key}`, String(value));
+      }
     }
     
     return args;
@@ -340,27 +348,34 @@ export class RemoteExecutionService extends EventEmitter {
     if (!connection) {
       throw new Error('Connection not found');
     }
+    // Local: ensure directory directly
+    if (connection.type === 'local') {
+      if (!fs.existsSync(remoteDirectoryPath)) {
+        fs.mkdirSync(remoteDirectoryPath, { recursive: true });
+      }
+      return Promise.resolve();
+    }
 
     await new Promise<void>((resolve, reject) => {
-      const sshArgs: string[] = [];
-
-      if (connection.keyPath) {
-        sshArgs.push('-i', connection.keyPath);
-      }
-
-      if (connection.port) {
-        sshArgs.push('-p', String(connection.port));
-      }
+      let cmd = 'ssh';
+      const args: string[] = [];
 
       const target = connection.username
         ? `${connection.username}@${connection.host}`
         : connection.host;
-      sshArgs.push(target);
 
       const ps = `powershell.exe -NoProfile -Command \"New-Item -ItemType Directory -Path '${remoteDirectoryPath}' -Force | Out-Null\"`;
-      sshArgs.push(ps);
 
-      const child = spawn('ssh', sshArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      if (connection.type === 'tailscale') {
+        cmd = 'tailscale';
+        args.push('ssh', target, ps);
+      } else {
+        if (connection.keyPath) args.push('-i', connection.keyPath);
+        if (connection.port) args.push('-p', String(connection.port));
+        args.push(target, ps);
+      }
+
+      const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
       let errorOutput = '';
       child.stderr?.on('data', (d) => (errorOutput += d.toString()));
       child.on('close', (code) => {
@@ -380,25 +395,41 @@ export class RemoteExecutionService extends EventEmitter {
     if (!connection) {
       throw new Error('Connection not found');
     }
+    // Local: copy directly
+    if (connection.type === 'local') {
+      if (!fs.existsSync(localDestinationDirectory)) {
+        fs.mkdirSync(localDestinationDirectory, { recursive: true });
+      }
+      const destPath = path.join(localDestinationDirectory, path.basename(remotePath));
+      fs.copyFileSync(remotePath, destPath);
+      return Promise.resolve();
+    }
 
     return new Promise((resolve, reject) => {
-      const scpArgs: string[] = [];
+      let cmd = 'scp';
+      const args: string[] = [];
 
-      if (connection.keyPath) scpArgs.push('-i', connection.keyPath);
-      if (connection.port) scpArgs.push('-P', String(connection.port));
+      if (connection.type === 'tailscale') {
+        cmd = 'tailscale';
+        const source = connection.username ? `${connection.username}@${connection.host}:${remotePath}` : `${connection.host}:${remotePath}`;
+        args.push('file', 'cp', source, localDestinationDirectory);
+      } else {
+        if (connection.keyPath) args.push('-i', connection.keyPath);
+        if (connection.port) args.push('-P', String(connection.port));
 
-      const source = connection.username
-        ? `${connection.username}@${connection.host}:${remotePath}`
-        : `${connection.host}:${remotePath}`;
+        const source = connection.username
+          ? `${connection.username}@${connection.host}:${remotePath}`
+          : `${connection.host}:${remotePath}`;
 
-      scpArgs.push(source, localDestinationDirectory);
+        args.push(source, localDestinationDirectory);
+      }
 
-      const child = spawn('scp', scpArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
       let errorOutput = '';
       child.stderr?.on('data', (d) => (errorOutput += d.toString()));
       child.on('close', (code) => {
         if (code === 0) resolve();
-        else reject(new Error(`SCP (from remote) failed (${code}): ${errorOutput}`));
+        else reject(new Error(`${connection.type === 'tailscale' ? 'tailscale file cp (from remote)' : 'SCP (from remote)'} failed (${code}): ${errorOutput}`));
       });
       child.on('error', reject);
     });
@@ -413,22 +444,54 @@ export class RemoteExecutionService extends EventEmitter {
     if (!connection) {
       throw new Error('Connection not found');
     }
+    // Local: copy directory recursively
+    if (connection.type === 'local') {
+      if (!fs.existsSync(localDestinationDirectory)) {
+        fs.mkdirSync(localDestinationDirectory, { recursive: true });
+      }
+      const entries = fs.readdirSync(remoteDirectory, { withFileTypes: true });
+      for (const entry of entries) {
+        const src = path.join(remoteDirectory, entry.name);
+        const dest = path.join(localDestinationDirectory, entry.name);
+        if (entry.isDirectory()) {
+          fs.mkdirSync(dest, { recursive: true });
+          // simple shallow copy; not recursing deeply to keep implementation minimal
+          const inner = fs.readdirSync(src, { withFileTypes: true });
+          for (const f of inner) {
+            if (f.isFile()) fs.copyFileSync(path.join(src, f.name), path.join(dest, f.name));
+          }
+        } else if (entry.isFile()) {
+          fs.copyFileSync(src, dest);
+        }
+      }
+      return Promise.resolve();
+    }
 
     return new Promise((resolve, reject) => {
-      const scpArgs: string[] = ['-r'];
-      if (connection.keyPath) scpArgs.push('-i', connection.keyPath);
-      if (connection.port) scpArgs.push('-P', String(connection.port));
-      const source = connection.username
-        ? `${connection.username}@${connection.host}:${remoteDirectory}`
-        : `${connection.host}:${remoteDirectory}`;
-      scpArgs.push(source, localDestinationDirectory);
+      let cmd = 'scp';
+      const args: string[] = [];
 
-      const child = spawn('scp', scpArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      if (connection.type === 'tailscale') {
+        cmd = 'tailscale';
+        const source = connection.username ? `${connection.username}@${connection.host}:${remoteDirectory}` : `${connection.host}:${remoteDirectory}`;
+        // Attempt recursive copy via tailscale file cp - may require recent Tailscale version
+        args.push('file', 'cp', '-r', source, localDestinationDirectory);
+      } else {
+        args.push('-r');
+        if (connection.keyPath) args.push('-i', connection.keyPath);
+        if (connection.port) args.push('-P', String(connection.port));
+        const source = connection.username
+          ? `${connection.username}@${connection.host}:${remoteDirectory}`
+          : `${connection.host}:${remoteDirectory}`;
+        args.push(source, localDestinationDirectory);
+      }
+
+      const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
       let errorOutput = '';
       child.stderr?.on('data', (d) => (errorOutput += d.toString()));
       child.on('close', (code) => {
         if (code === 0) resolve();
-        else reject(new Error(`SCP dir (from remote) failed (${code}): ${errorOutput}`));
+        else reject(new Error(`${connection.type === 'tailscale' ? 'tailscale file cp dir (from remote)' : 'SCP dir (from remote)'} failed (${code}): ${errorOutput}`));
       });
       child.on('error', reject);
     });
@@ -524,23 +587,27 @@ export class RemoteExecutionService extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
-      const scpArgs: string[] = [];
+      let cmd = 'scp';
+      const args: string[] = [];
 
-      if (connection.keyPath) {
-        scpArgs.push('-i', connection.keyPath);
+      if (connection.type === 'tailscale') {
+        cmd = 'tailscale';
+        const target = connection.username ? `${connection.username}@${connection.host}:${remoteDestinationPath}` : `${connection.host}:${remoteDestinationPath}`;
+        args.push('file', 'cp', localPath, target);
+      } else {
+        if (connection.keyPath) {
+          args.push('-i', connection.keyPath);
+        }
+        if (connection.port) {
+          args.push('-P', String(connection.port));
+        }
+        const target = connection.username
+          ? `${connection.username}@${connection.host}:${remoteDestinationPath}`
+          : `${connection.host}:${remoteDestinationPath}`;
+        args.push(localPath, target);
       }
 
-      if (connection.port) {
-        scpArgs.push('-P', String(connection.port));
-      }
-
-      const target = connection.username
-        ? `${connection.username}@${connection.host}:${remoteDestinationPath}`
-        : `${connection.host}:${remoteDestinationPath}`;
-
-      scpArgs.push(localPath, target);
-
-      const child = spawn('scp', scpArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
       let errorOutput = '';
       child.stderr?.on('data', (data) => {
@@ -572,23 +639,28 @@ export class RemoteExecutionService extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
-      const scpArgs: string[] = ['-r'];
+      let cmd = 'scp';
+      const args: string[] = [];
 
-      if (connection.keyPath) {
-        scpArgs.push('-i', connection.keyPath);
+      if (connection.type === 'tailscale') {
+        cmd = 'tailscale';
+        const target = connection.username ? `${connection.username}@${connection.host}:${remoteDestinationDirectory}` : `${connection.host}:${remoteDestinationDirectory}`;
+        args.push('file', 'cp', '-r', localDirectory, target);
+      } else {
+        args.push('-r');
+        if (connection.keyPath) {
+          args.push('-i', connection.keyPath);
+        }
+        if (connection.port) {
+          args.push('-P', String(connection.port));
+        }
+        const target = connection.username
+          ? `${connection.username}@${connection.host}:${remoteDestinationDirectory}`
+          : `${connection.host}:${remoteDestinationDirectory}`;
+        args.push(localDirectory, target);
       }
 
-      if (connection.port) {
-        scpArgs.push('-P', String(connection.port));
-      }
-
-      const target = connection.username
-        ? `${connection.username}@${connection.host}:${remoteDestinationDirectory}`
-        : `${connection.host}:${remoteDestinationDirectory}`;
-
-      scpArgs.push(localDirectory, target);
-
-      const child = spawn('scp', scpArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
       let errorOutput = '';
       child.stderr?.on('data', (data) => {

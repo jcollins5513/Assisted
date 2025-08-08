@@ -23,20 +23,38 @@ dotenv.config();
 
 const app = express();
 const server = createServer(app);
+
+// Build allowed origins list with sensible dev defaults
+const allowedOrigins = (process.env['ALLOWED_ORIGINS']
+  ? process.env['ALLOWED_ORIGINS']!.split(',').map(o => o.trim()).filter(Boolean)
+  : ['http://localhost:3000', 'http://localhost:3002']);
+
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser or same-origin requests (no origin header)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS: Origin ${origin} not allowed`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204
+};
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+    origin: allowedOrigins,
     methods: ['GET', 'POST']
   }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env['PORT'] || 3001;
 
 // Middleware
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
-  credentials: true
-}));
+app.use(cors(corsOptions));
+// Explicitly handle preflight across all routes
+app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -47,7 +65,7 @@ app.use('/uploads', express.static(uploadsDir));
 // Database connection
 const connectDB = async () => {
   try {
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/car-sales-ai';
+    const mongoURI = process.env['MONGODB_URI'] || 'mongodb://localhost:27017/car-sales-ai';
     await mongoose.connect(mongoURI);
     console.log('✅ MongoDB connected successfully');
   } catch (error) {
@@ -65,7 +83,7 @@ app.use('/api/uploads', authMiddleware, uploadRoutes);
 app.use('/api/remote-execution', authMiddleware, remoteExecutionRoutes);
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { apiClient } from '@/services/api';
 
 interface RemoteConnection {
   id: string;
@@ -31,106 +32,65 @@ export function ConnectionManager({ onConnectionSelect, selectedConnection }: Co
     name: '',
     type: 'tailscale' as const,
     host: '',
-    port: ''
+    port: '',
+    username: '',
+    keyPath: ''
   });
 
-  // Mock data for demonstration
+  // Load from backend
   useEffect(() => {
-    const mockConnections: RemoteConnection[] = [
-      {
-        id: '1',
-        name: 'Production Server',
-        type: 'tailscale',
-        host: '100.64.0.1',
-        status: 'connected',
-        lastConnected: new Date().toISOString()
-      },
-      {
-        id: '2',
-        name: 'Development Server',
-        type: 'ssh',
-        host: '192.168.1.100',
-        port: 22,
-        status: 'disconnected'
-      },
-      {
-        id: '3',
-        name: 'Cloud Processing',
-        type: 'cloud-tunnel',
-        host: 'processing.example.com',
-        status: 'error',
-        error: 'Connection timeout'
+    (async () => {
+      const res = await apiClient.get<any>('/remote-execution/connections');
+      if (res.success && (res.data as any)?.data) {
+        setConnections((res.data as any).data as RemoteConnection[]);
+      } else {
+        setConnections([]);
       }
-    ];
-
-    setConnections(mockConnections);
-    setLoading(false);
+      setLoading(false);
+    })();
   }, []);
 
   const handleAddConnection = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const connection: Omit<RemoteConnection, 'id' | 'status'> = {
+    const payload = {
       name: newConnection.name,
       type: newConnection.type,
       host: newConnection.host,
-      port: newConnection.port ? parseInt(newConnection.port) : undefined
+      port: newConnection.port ? parseInt(newConnection.port) : undefined,
+      username: newConnection.username || undefined,
+      keyPath: newConnection.keyPath || undefined
     };
 
-    // In a real implementation, this would call the API
-    const newId = (connections.length + 1).toString();
-    const newConn: RemoteConnection = {
-      ...connection,
-      id: newId,
-      status: 'disconnected'
-    };
-
-    setConnections([...connections, newConn]);
-    setNewConnection({ name: '', type: 'tailscale', host: '', port: '' });
+    const res = await apiClient.post<any>('/remote-execution/connections', payload);
+    if (res.success && (res.data as any)?.data) {
+      const created = (res.data as any).data as RemoteConnection;
+      setConnections(prev => [...prev, created]);
+    }
+    setNewConnection({ name: '', type: 'tailscale', host: '', port: '', username: '', keyPath: '' });
     setShowAddForm(false);
   };
 
   const handleConnect = async (connectionId: string) => {
-    const connection = connections.find(c => c.id === connectionId);
-    if (!connection) return;
-
-    // Update status to connecting
-    setConnections(conns => 
-      conns.map(c => 
-        c.id === connectionId 
-          ? { ...c, status: 'connecting' as const }
-          : c
-      )
-    );
-
-    // Simulate connection process
-    setTimeout(() => {
-      setConnections(conns => 
-        conns.map(c => 
-          c.id === connectionId 
-            ? { 
-                ...c, 
-                status: 'connected' as const,
-                lastConnected: new Date().toISOString(),
-                error: undefined
-              }
-            : c
-        )
-      );
-    }, 2000);
+    setConnections(conns => conns.map(c => c.id === connectionId ? { ...c, status: 'connecting' } as any : c));
+    await apiClient.post<any>(`/remote-execution/connections/${connectionId}/connect`, {});
+    // Refresh list
+    const res = await apiClient.get<any>('/remote-execution/connections');
+    if (res.success && (res.data as any)?.data) {
+      setConnections((res.data as any).data as RemoteConnection[]);
+    }
   };
 
   const handleDisconnect = async (connectionId: string) => {
-    setConnections(conns => 
-      conns.map(c => 
-        c.id === connectionId 
-          ? { ...c, status: 'disconnected' as const }
-          : c
-      )
-    );
+    await apiClient.post<any>(`/remote-execution/connections/${connectionId}/disconnect`, {});
+    const res = await apiClient.get<any>('/remote-execution/connections');
+    if (res.success && (res.data as any)?.data) {
+      setConnections((res.data as any).data as RemoteConnection[]);
+    }
   };
 
   const handleDelete = async (connectionId: string) => {
+    await apiClient.delete<any>(`/remote-execution/connections/${connectionId}`);
     setConnections(conns => conns.filter(c => c.id !== connectionId));
     if (selectedConnection === connectionId) {
       onConnectionSelect(null);
@@ -228,6 +188,29 @@ export function ConnectionManager({ onConnectionSelect, selectedConnection }: Co
                   type="number"
                   value={newConnection.port}
                   onChange={(e) => setNewConnection({ ...newConnection, port: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  SSH Username (required)
+                </label>
+                <input
+                  type="text"
+                  value={newConnection.username}
+                  onChange={(e) => setNewConnection({ ...newConnection, username: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  SSH Private Key Path (required)
+                </label>
+                <input
+                  type="text"
+                  value={newConnection.keyPath}
+                  onChange={(e) => setNewConnection({ ...newConnection, keyPath: e.target.value })}
+                  placeholder={process.platform === 'win32' ? 'C\\\\Users\\you\\.ssh\\id_ed25519' : '/home/you/.ssh/id_ed25519'}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

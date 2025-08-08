@@ -1,10 +1,9 @@
 import express from 'express';
-import { createError } from '../middleware/errorHandler';
 
 const router = express.Router();
 
 // Get marketing templates
-router.get('/templates', async (req, res, next) => {
+router.get('/templates', async (_req, res, next) => {
   try {
     const templates = [
       {
@@ -44,9 +43,8 @@ router.get('/templates', async (req, res, next) => {
 });
 
 // Generate content with OpenAI
-router.post('/generate', async (req, res, next) => {
+router.post('/generate', async (_req, res, next) => {
   try {
-    const { templateId, vehicleData, customPrompt } = req.body;
 
     // This would integrate with OpenAI API
     // For now, return a mock response
@@ -124,7 +122,7 @@ router.get('/saved', async (req, res, next) => {
 // Post to Facebook
 router.post('/publish', async (req, res, next) => {
   try {
-    const { contentId, platform = 'facebook' } = req.body;
+    const { platform = 'facebook' } = req.body;
 
     // This would integrate with Facebook API
     const publishResult = {

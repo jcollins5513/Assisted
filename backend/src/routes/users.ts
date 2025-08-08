@@ -17,7 +17,13 @@ router.get('/profile', async (req, res, next) => {
 // Update user profile
 router.put('/profile', async (req, res, next) => {
   try {
-    const { firstName, lastName, phone, avatar, preferences } = req.body;
+    const { firstName, lastName, phone, avatar, preferences } = req.body as {
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      avatar?: string;
+      preferences?: any;
+    };
     
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -29,7 +35,19 @@ router.put('/profile', async (req, res, next) => {
     if (lastName) user.lastName = lastName;
     if (phone) user.phone = phone;
     if (avatar) user.avatar = avatar;
-    if (preferences) user.preferences = { ...user.preferences, ...preferences };
+    if (preferences) {
+      // Merge nested remoteProcessing too
+      user.preferences = {
+        ...user.preferences,
+        ...preferences,
+        ...(preferences.remoteProcessing && {
+          remoteProcessing: {
+            ...user.preferences.remoteProcessing,
+            ...preferences.remoteProcessing
+          }
+        })
+      } as any;
+    }
 
     await user.save();
 

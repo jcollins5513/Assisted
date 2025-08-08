@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { apiClient } from '@/services/api';
 
 interface BackgroundRemovalProps {
@@ -21,6 +21,7 @@ interface ProcessingJob {
 
 export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: BackgroundRemovalProps) {
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
+  const [connections, setConnections] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [processingSettings, setProcessingSettings] = useState({
     model: 'u2net',
@@ -29,6 +30,16 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    (async () => {
+      const res = await apiClient.get<any>('/remote-execution/connections');
+      if (res.success && (res.data as any)?.data) {
+        const list = ((res.data as any).data as any[]).map(c => ({ id: c.id, name: c.name }));
+        setConnections(list);
+      }
+    })();
+  }, []);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -80,10 +91,13 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
       }));
       setProcessingJobs(prev => [...prev, ...newJobs]);
 
-      // Remote paths (user-adjustable in settings later)
-      const remoteScriptPath = 'C\\\\Tools\\\\backgroundremover-cli.ps1';
-      const remoteInputDir = 'C\\\\processing\\\\in';
-      const remoteOutputDir = 'C\\\\processing\\\\out';
+      // Fetch user preferences for remote paths
+      const prefsRes = await apiClient.get<any>('/users/profile');
+      const rp = prefsRes.success ? prefsRes.data?.user?.preferences?.remoteProcessing : undefined;
+      const remoteScriptPath = rp?.remoteScriptPath || 'C\\\\\u005CTools\\\\\u005Cbackgroundremover-cli.ps1';
+      const remoteInputDir = rp?.remoteInputDir || 'C\\\\\u005Cprocessing\\\\\u005Cin';
+      const remoteOutputDir = rp?.remoteOutputDir || 'C\\\\\u005Cprocessing\\\\\u005Cout';
+      const defaultModel = rp?.defaultModel || processingSettings.model;
 
       // Batch mode by copying a folder: use the server upload folder as input parent
       // For simplicity here, we treat as folder if >1 file
@@ -95,7 +109,7 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
         connectionId: selectedConnection,
         engine: 'backgroundremover',
         inputPath,
-        model: processingSettings.model,
+        model: defaultModel,
         batchMode: isBatch,
         alphaMatting: true,
         remoteScriptPath,
@@ -208,26 +222,25 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
             Remove backgrounds from images using AI processing on remote servers
           </p>
         </div>
-        {!selectedConnection && (
-          <div className="text-sm text-orange-600 bg-orange-50 px-3 py-2 rounded-lg">
-            ⚠️ Please select a remote connection first
-          </div>
-        )}
+        <div className="flex items-center space-x-3">
+          <label className="text-sm text-gray-700">Connection:</label>
+          <select
+            value={selectedConnection || ''}
+            onChange={(e) => onConnectionSelect(e.target.value || null)}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+          >
+            <option value="">Select connection…</option>
+            {connections.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Connection Selection */}
+      {/* Connection Selection Notice */}
       {!selectedConnection && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-yellow-800 mb-2">No Connection Selected</h3>
-          <p className="text-sm text-yellow-700 mb-3">
-            You need to select a remote connection to process images. Go to the Connections tab to set up a connection.
-          </p>
-          <button
-            onClick={() => onConnectionSelect('1')} // Select first available connection
-            className="px-3 py-1 text-sm bg-yellow-600 hover:bg-yellow-700 text-white rounded transition-colors"
-          >
-            Use Demo Connection
-          </button>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
+          Select a connection above to enable processing.
         </div>
       )}
 

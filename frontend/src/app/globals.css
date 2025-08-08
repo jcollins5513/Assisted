@@ -24,3 +24,17 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Make input text darker and improve contrast */
+input, select, textarea {
+  color: #111827; /* tailwind gray-900 */
+}
+
+input::placeholder, textarea::placeholder {
+  color: #6b7280; /* tailwind gray-500 */
+}
+
+/* Ensure disabled inputs still readable */
+input:disabled, select:disabled, textarea:disabled {
+  color: #374151; /* tailwind gray-700 */
+}

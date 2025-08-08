@@ -12,6 +12,7 @@ Assisted-1/
 │       └── 📄 start-of-project.mdc      # Project initialization rules
 ├── 📁 .git/                             # Git version control
 └── 📁 ✅ frontend/                      # React/Next.js frontend application
+    ├── 📄 .env.local                   # Frontend environment (API base URL)
     ├── 📄 Dockerfile                    # Frontend Docker configuration
     ├── 📁 src/
     │   ├── 📁 app/                      # Next.js app directory
@@ -73,6 +74,7 @@ Assisted-1/
     ├── 📄 tsconfig.json                 # TypeScript configuration
     └── 📄 next.config.js                # Next.js configuration
 └── 📁 ✅ backend/                       # Node.js/Express backend API
+    ├── 📄 .env                          # Backend environment (JWT, DB, CORS)
     ├── 📄 Dockerfile                    # Backend Docker configuration
     ├── 📁 src/
     │   ├── 📄 server.ts                 # Main server file

@@ -53,7 +53,7 @@ export class ErrorHandlerService extends EventEmitter {
     error: AppError,
     req: Request,
     res: Response,
-    next: NextFunction
+    _next: NextFunction
   ): void {
     const errorLog = this.createErrorLog(error, req);
     this.errorLogs.set(errorLog.id, errorLog);
@@ -156,7 +156,7 @@ export class ErrorHandlerService extends EventEmitter {
     }
   }
 
-  private async fallbackToLocalProcessing(req: Request): Promise<{ success: boolean; data?: any }> {
+  private async fallbackToLocalProcessing(_req: Request): Promise<{ success: boolean; data?: any }> {
     // Fallback to local processing when remote connection fails
     try {
       // Simulate local processing
@@ -172,7 +172,7 @@ export class ErrorHandlerService extends EventEmitter {
     }
   }
 
-  private async fallbackToAlternativeTransfer(req: Request): Promise<{ success: boolean; data?: any }> {
+  private async fallbackToAlternativeTransfer(_req: Request): Promise<{ success: boolean; data?: any }> {
     // Fallback to alternative file transfer method
     try {
       // Simulate alternative transfer method
@@ -188,7 +188,7 @@ export class ErrorHandlerService extends EventEmitter {
     }
   }
 
-  private async fallbackToManualReview(req: Request): Promise<{ success: boolean; data?: any }> {
+  private async fallbackToManualReview(_req: Request): Promise<{ success: boolean; data?: any }> {
     // Fallback to manual review when quality assessment fails
     try {
       return {
@@ -203,7 +203,7 @@ export class ErrorHandlerService extends EventEmitter {
     }
   }
 
-  private async fallbackToSimplifiedProcessing(req: Request): Promise<{ success: boolean; data?: any }> {
+  private async fallbackToSimplifiedProcessing(_req: Request): Promise<{ success: boolean; data?: any }> {
     // Fallback to simplified processing when timeout occurs
     try {
       return {
@@ -230,7 +230,7 @@ export class ErrorHandlerService extends EventEmitter {
     return retryableErrors.includes(error.errorCode || '');
   }
 
-  private queueForRetry(error: AppError, req: Request): void {
+  private queueForRetry(error: AppError, _req: Request): void {
     this.retryQueue.push({
       error,
       attempt: 1,
@@ -303,15 +303,9 @@ export class ErrorHandlerService extends EventEmitter {
     }
   }
 
-  private async retryOperation(error: AppError, attempt: number): Promise<void> {
-    // Simulate retry operation
-    // In a real implementation, this would retry the actual operation
+  private async retryOperation(_error: AppError, _attempt: number): Promise<void> {
+    // Simulate retry operation (no-op for typing cleanliness)
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Simulate success/failure based on attempt number
-    if (attempt >= 2) {
-      throw new Error('Retry failed');
-    }
   }
 
   // Error Notification System
@@ -324,7 +318,7 @@ export class ErrorHandlerService extends EventEmitter {
     ];
     
     return criticalErrorCodes.includes(error.errorCode || '') || 
-           (error.statusCode && error.statusCode >= 500);
+           (!!error.statusCode && error.statusCode >= 500);
   }
 
   private queueNotification(notification: ErrorNotification): void {
@@ -491,9 +485,9 @@ export const errorHandler = (
   error: AppError,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
-  errorHandlerService.handleError(error, req, res, next);
+  errorHandlerService.handleError(error, req, res, _next);
 };
 
 export const createError = (
@@ -508,11 +502,11 @@ export const createError = (
 ): AppError => {
   const appError = new Error(message) as AppError;
   appError.statusCode = statusCode;
-  appError.errorCode = errorCode;
+  if (errorCode !== undefined) appError.errorCode = errorCode;
   appError.isOperational = true;
-  appError.retryable = options.retryable;
-  appError.fallbackAvailable = options.fallbackAvailable;
-  appError.context = options.context;
+  if (options.retryable !== undefined) appError.retryable = options.retryable;
+  if (options.fallbackAvailable !== undefined) appError.fallbackAvailable = options.fallbackAvailable;
+  if (options.context !== undefined) appError.context = options.context;
   return appError;
 };
 

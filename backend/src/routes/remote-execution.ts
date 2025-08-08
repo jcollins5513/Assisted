@@ -1,16 +1,15 @@
 import { Router } from 'express';
-import { RemoteExecutionService, RemoteConnection, ScriptExecution } from '../services/remoteExecutionService';
+import { RemoteExecutionService } from '../services/remoteExecutionService';
 import { authMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/errorHandler';
 import path from 'path'; // Added missing import for path
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 const remoteService = new RemoteExecutionService();
 
 // Get all connections
-router.get('/connections', authMiddleware, async (req, res, next) => {
+router.get('/connections', authMiddleware, async (_req, res, next) => {
   try {
     const connections = remoteService.getConnections();
     res.json({
@@ -25,12 +24,16 @@ router.get('/connections', authMiddleware, async (req, res, next) => {
 // Get connection by ID
 router.get('/connections/:id', authMiddleware, async (req, res, next) => {
   try {
-    const connection = remoteService.getConnection(req.params.id);
+    const id = req.params['id'] as string;
+    if (!id) {
+      return next(createError('id param required', 400));
+    }
+    const connection = remoteService.getConnection(id);
     if (!connection) {
       return next(createError('Connection not found', 404));
     }
     
-    const health = remoteService.getConnectionHealth(req.params.id);
+    const health = remoteService.getConnectionHealth(id);
     
     res.json({
       success: true,
@@ -47,22 +50,25 @@ router.get('/connections/:id', authMiddleware, async (req, res, next) => {
 // Add new connection
 router.post('/connections', authMiddleware, async (req, res, next) => {
   try {
-    const { name, type, host, port } = req.body;
+    const { name, type, host, port, username, keyPath } = req.body as {
+      name: string; type: 'tailscale' | 'ssh' | 'cloud-tunnel'; host: string; port?: number;
+      username?: string; keyPath?: string;
+    };
     
     if (!name || !type || !host) {
       return next(createError('Name, type, and host are required', 400));
     }
     
-    if (!['tailscale', 'ssh', 'cloud-tunnel'].includes(type)) {
+    if (!['local', 'tailscale', 'ssh', 'cloud-tunnel'].includes(type)) {
       return next(createError('Invalid connection type', 400));
     }
     
-    const connectionId = await remoteService.addConnection({
-      name,
-      type,
-      host,
-      port
-    });
+    const toCreate: any = { name, type, host };
+    if (typeof port === 'number') toCreate.port = port;
+    if (username) toCreate.username = username;
+    if (keyPath) toCreate.keyPath = keyPath;
+
+    const connectionId = await remoteService.addConnection(toCreate);
     
     const connection = remoteService.getConnection(connectionId);
     
@@ -78,7 +84,11 @@ router.post('/connections', authMiddleware, async (req, res, next) => {
 // Connect to remote server
 router.post('/connections/:id/connect', authMiddleware, async (req, res, next) => {
   try {
-    const success = await remoteService.connect(req.params.id);
+    const id = req.params['id'] as string;
+    if (!id) {
+      return next(createError('id param required', 400));
+    }
+    const success = await remoteService.connect(id);
     
     res.json({
       success: true,
@@ -92,7 +102,11 @@ router.post('/connections/:id/connect', authMiddleware, async (req, res, next) =
 // Disconnect from remote server
 router.post('/connections/:id/disconnect', authMiddleware, async (req, res, next) => {
   try {
-    await remoteService.disconnect(req.params.id);
+    const id = req.params['id'] as string;
+    if (!id) {
+      return next(createError('id param required', 400));
+    }
+    await remoteService.disconnect(id);
     
     res.json({
       success: true,
@@ -107,9 +121,13 @@ router.post('/connections/:id/disconnect', authMiddleware, async (req, res, next
 router.delete('/connections/:id', authMiddleware, async (req, res, next) => {
   try {
     // First disconnect if connected
-    const connection = remoteService.getConnection(req.params.id);
+    const id = req.params['id'] as string;
+    if (!id) {
+      return next(createError('id param required', 400));
+    }
+    const connection = remoteService.getConnection(id);
     if (connection && connection.status === 'connected') {
-      await remoteService.disconnect(req.params.id);
+      await remoteService.disconnect(id);
     }
     
     // In a real implementation, you would remove the connection from storage
@@ -125,7 +143,7 @@ router.delete('/connections/:id', authMiddleware, async (req, res, next) => {
 });
 
 // Get all executions
-router.get('/executions', authMiddleware, async (req, res, next) => {
+router.get('/executions', authMiddleware, async (_req, res, next) => {
   try {
     const executions = remoteService.getExecutions();
     res.json({
@@ -140,7 +158,11 @@ router.get('/executions', authMiddleware, async (req, res, next) => {
 // Get execution by ID
 router.get('/executions/:id', authMiddleware, async (req, res, next) => {
   try {
-    const execution = remoteService.getExecution(req.params.id);
+    const id = req.params['id'] as string;
+    if (!id) {
+      return next(createError('id param required', 400));
+    }
+    const execution = remoteService.getExecution(id);
     if (!execution) {
       return next(createError('Execution not found', 404));
     }
@@ -180,7 +202,11 @@ router.post('/executions', authMiddleware, async (req, res, next) => {
 // Stop execution
 router.post('/executions/:id/stop', authMiddleware, async (req, res, next) => {
   try {
-    await remoteService.stopExecution(req.params.id);
+    const id = req.params['id'] as string;
+    if (!id) {
+      return next(createError('id param required', 400));
+    }
+    await remoteService.stopExecution(id);
     
     res.json({
       success: true,
@@ -212,7 +238,8 @@ router.post('/background-removal', authMiddleware, async (req, res, next) => {
       engine, // 'backgroundremover' | 'rembg'
       remoteScriptPath, // Optional: absolute path on remote host for PowerShell script
       remoteInputDir,   // Optional: where to copy inputs on remote host (e.g., C:\processing\in)
-      remoteOutputDir   // Optional: where outputs are written on remote host (e.g., C:\processing\out)
+      remoteOutputDir,  // Optional: where outputs are written on remote host (e.g., C:\processing\out)
+      pythonPath        // Optional: path to python.exe inside conda env
     } = req.body;
     
     if (!connectionId || !inputPath) {
@@ -222,28 +249,27 @@ router.post('/background-removal', authMiddleware, async (req, res, next) => {
     const useBackgroundRemover = (engine || 'backgroundremover') === 'backgroundremover';
 
     // Build script parameters
-    const parameters: Record<string, any> = {
-      InputPath: inputPath
-    };
+    const parameters: Record<string, any> = {};
+    parameters['InputPath'] = inputPath;
     
-    if (outputPath) parameters.OutputPath = outputPath;
+    if (outputPath) parameters['OutputPath'] = outputPath;
 
     if (useBackgroundRemover) {
-      if (model) parameters.Model = model;
-      if (batchMode) parameters.BatchMode = true;
-      if (alphaMatting) parameters.AlphaMatting = true;
-      if (alphaErode !== undefined) parameters.AlphaErode = alphaErode;
-      if (transparentVideo) parameters.TransparentVideo = true;
-      if (frameRate !== undefined) parameters.FrameRate = frameRate;
-      if (frameLimit !== undefined) parameters.FrameLimit = frameLimit;
-      if (gpuBatch !== undefined) parameters.GpuBatch = gpuBatch;
-      if (workers !== undefined) parameters.Workers = workers;
-      if (overlayVideoPath) parameters.OverlayVideoPath = overlayVideoPath;
-      if (overlayImagePath) parameters.OverlayImagePath = overlayImagePath;
+      if (model) parameters['Model'] = model;
+      if (batchMode) parameters['BatchMode'] = true;
+      if (alphaMatting) parameters['AlphaMatting'] = true;
+      if (alphaErode !== undefined) parameters['AlphaErode'] = alphaErode;
+      if (transparentVideo) parameters['TransparentVideo'] = true;
+      if (frameRate !== undefined) parameters['FrameRate'] = frameRate;
+      if (frameLimit !== undefined) parameters['FrameLimit'] = frameLimit;
+      if (gpuBatch !== undefined) parameters['GpuBatch'] = gpuBatch;
+      if (workers !== undefined) parameters['Workers'] = workers;
+      if (overlayVideoPath) parameters['OverlayVideoPath'] = overlayVideoPath;
+      if (overlayImagePath) parameters['OverlayImagePath'] = overlayImagePath;
     } else {
       // Legacy script parameters
-      if (model) parameters.Model = model;
-      if (batchMode) parameters.BatchMode = true;
+      if (model) parameters['Model'] = model;
+      if (batchMode) parameters['BatchMode'] = true;
     }
     
     // If remoteScriptPath is provided, we assume running entirely on remote host
@@ -259,17 +285,27 @@ router.post('/background-removal', authMiddleware, async (req, res, next) => {
       // Copy input (file or folder) to remote
       const serverPath = inputPath as string;
       const isDirectory = fs.existsSync(serverPath) && fs.lstatSync(serverPath).isDirectory();
+      let remoteInputActualPath = remoteInputDir;
+      let remoteOutputActualPath = remoteOutputDir;
       if (isDirectory) {
         await remoteService.copyDirectoryToRemote(connectionId, serverPath, remoteInputDir);
+        remoteInputActualPath = remoteInputDir; // folder processing uses -if
       } else {
-        await remoteService.copyFileToRemote(connectionId, serverPath, path.join(remoteInputDir, path.basename(serverPath)));
+        const remoteFilePath = path.join(remoteInputDir, path.basename(serverPath));
+        await remoteService.copyFileToRemote(connectionId, serverPath, remoteFilePath);
+        remoteInputActualPath = remoteFilePath; // single file processing uses -i
+        // Build an explicit output file path inside remoteOutputDir for single-file mode
+        const base = path.parse(serverPath).name;
+        remoteOutputActualPath = path.join(remoteOutputDir, `${base}_no_bg.png`);
       }
 
       // Run script on remote against the remote input/output
       const remoteParams = {
         ...parameters,
-        InputPath: remoteInputDir,
-        OutputPath: remoteOutputDir
+        // Use -if for directories and -i for files inside the wrapper
+        InputPath: remoteInputActualPath,
+        OutputPath: remoteOutputActualPath,
+        ...(pythonPath ? { PythonPath: pythonPath } : {})
       };
       const executionId = await remoteService.executeScript(connectionId, remoteScriptPath, remoteParams);
 
@@ -308,7 +344,11 @@ router.post('/background-removal', authMiddleware, async (req, res, next) => {
 // Get connection health
 router.get('/connections/:id/health', authMiddleware, async (req, res, next) => {
   try {
-    const health = remoteService.getConnectionHealth(req.params.id);
+    const id = req.params['id'] as string;
+    if (!id) {
+      return next(createError('id param required', 400));
+    }
+    const health = remoteService.getConnectionHealth(id);
     
     res.json({
       success: true,
