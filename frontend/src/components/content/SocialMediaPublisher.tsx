@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { GeneratedContent } from './ContentGenerator';
+import { apiClient, API_ENDPOINTS } from '@/services/api';
 
 interface SocialMediaPublisherProps {
   content: GeneratedContent;
@@ -26,6 +27,17 @@ export interface PublishingSchedule {
   content: string;
 }
 
+interface PublishedPost {
+  id: string;
+  accountId: string;
+  platform: string;
+  accountName: string;
+  content: string;
+  publishedAt: Date;
+  status: string;
+  postUrl: string;
+}
+
 export const SocialMediaPublisher: React.FC<SocialMediaPublisherProps> = ({
   content,
   onPublished
@@ -34,47 +46,18 @@ export const SocialMediaPublisher: React.FC<SocialMediaPublisherProps> = ({
   const [publishingMode, setPublishingMode] = useState<'now' | 'schedule'>('now');
   const [scheduledTime, setScheduledTime] = useState('');
   const [publishing, setPublishing] = useState(false);
-  const [publishedPosts, setPublishedPosts] = useState<any[]>([]);
+  const [publishedPosts, setPublishedPosts] = useState<PublishedPost[]>([]);
+  const [socialAccounts, setSocialAccounts] = useState<SocialMediaAccount[]>([]);
 
-  // Mock social media accounts
-  const socialAccounts: SocialMediaAccount[] = [
-    {
-      id: 'fb-1',
-      platform: 'facebook',
-      name: 'Car Sales AI',
-      username: 'carsalesai',
-      avatar: 'https://via.placeholder.com/40',
-      connected: true,
-      followers: 1250
-    },
-    {
-      id: 'fb-2',
-      platform: 'facebook',
-      name: 'Dealership Page',
-      username: 'dealershippage',
-      avatar: 'https://via.placeholder.com/40',
-      connected: true,
-      followers: 890
-    },
-    {
-      id: 'ig-1',
-      platform: 'instagram',
-      name: 'Car Sales AI',
-      username: '@carsalesai',
-      avatar: 'https://via.placeholder.com/40',
-      connected: false,
-      followers: 0
-    },
-    {
-      id: 'tw-1',
-      platform: 'twitter',
-      name: 'Car Sales AI',
-      username: '@carsalesai',
-      avatar: 'https://via.placeholder.com/40',
-      connected: false,
-      followers: 0
-    }
-  ];
+  useEffect(() => {
+    const loadAccounts = async () => {
+      const res = await apiClient.get<SocialMediaAccount[]>(API_ENDPOINTS.SOCIAL.ACCOUNTS);
+      if (res.success && res.data) {
+        setSocialAccounts(res.data);
+      }
+    };
+    loadAccounts();
+  }, []);
 
   const handleAccountToggle = (accountId: string) => {
     setSelectedAccounts(prev => 
@@ -93,23 +76,19 @@ export const SocialMediaPublisher: React.FC<SocialMediaPublisherProps> = ({
     setPublishing(true);
 
     try {
-      // Simulate publishing process
       const publishPromises = selectedAccounts.map(async (accountId) => {
-        const account = socialAccounts.find(acc => acc.id === accountId);
-        
-        // Simulate API call delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        return {
-          id: `post-${Date.now()}-${accountId}`,
+        const res = await apiClient.post(API_ENDPOINTS.SOCIAL.PUBLISH, {
           accountId,
-          platform: account?.platform,
-          accountName: account?.name,
           content: content.text,
-          publishedAt: publishingMode === 'now' ? new Date() : new Date(scheduledTime),
-          status: 'published',
-          postUrl: `https://${account?.platform}.com/posts/${Math.random().toString(36).substr(2, 9)}`
-        };
+          scheduledTime: publishingMode === 'now' ? undefined : scheduledTime,
+        });
+        if (res.success && res.data) {
+          return {
+            ...res.data,
+            publishedAt: new Date(res.data.publishedAt),
+          };
+        }
+        throw new Error(res.error || 'Publish failed');
       });
 
       const results = await Promise.all(publishPromises);

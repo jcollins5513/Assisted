@@ -302,6 +302,12 @@ export const API_ENDPOINTS = {
     STATUS: '/remote/status',
     BACKGROUND_REMOVAL: '/remote/background-removal',
   },
+
+  // Social Media
+  SOCIAL: {
+    ACCOUNTS: '/social/accounts',
+    PUBLISH: '/social/publish',
+  },
   
   // Uploads
   UPLOADS: {

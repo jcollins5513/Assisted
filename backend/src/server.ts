@@ -13,6 +13,7 @@ import conversationRoutes from './routes/conversations';
 import contentRoutes from './routes/content';
 import uploadRoutes from './routes/uploads';
 import remoteExecutionRoutes from './routes/remote-execution';
+import socialRoutes from './routes/social';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -81,6 +82,7 @@ app.use('/api/conversations', authMiddleware, conversationRoutes);
 app.use('/api/content', authMiddleware, contentRoutes);
 app.use('/api/uploads', authMiddleware, uploadRoutes);
 app.use('/api/remote-execution', authMiddleware, remoteExecutionRoutes);
+app.use('/api/social', authMiddleware, socialRoutes);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
