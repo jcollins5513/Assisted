@@ -9,6 +9,8 @@ export interface RemoteConnection {
   type: 'tailscale' | 'ssh' | 'cloud-tunnel';
   host: string;
   port?: number;
+  username?: string; // Optional SSH username for remote execution
+  keyPath?: string;  // Optional SSH private key path for remote execution
   status: 'connected' | 'disconnected' | 'connecting' | 'error';
   lastConnected?: Date;
   error?: string;
@@ -211,27 +213,31 @@ export class RemoteExecutionService extends EventEmitter {
     parameters: Record<string, any>,
     executionId: string
   ): Promise<string> {
+    // If the connection is remote (tailscale/ssh/cloud-tunnel), execute over SSH
+    if (['tailscale', 'ssh', 'cloud-tunnel'].includes(connection.type)) {
+      return this.runScriptOverSsh(connection, scriptPath, parameters, executionId);
+    }
+
+    // Default: local PowerShell execution
     return new Promise((resolve, reject) => {
       const args = this.buildScriptArguments(scriptPath, parameters);
-      const process = spawn('powershell.exe', args, {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
+      const child = spawn('powershell.exe', args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
-      this.processes.set(executionId, process);
+      this.processes.set(executionId, child);
 
       let output = '';
       let errorOutput = '';
 
-      process.stdout?.on('data', (data) => {
+      child.stdout?.on('data', (data) => {
         output += data.toString();
         this.updateExecutionProgress(executionId, output.length);
       });
 
-      process.stderr?.on('data', (data) => {
+      child.stderr?.on('data', (data) => {
         errorOutput += data.toString();
       });
 
-      process.on('close', (code) => {
+      child.on('close', (code) => {
         this.processes.delete(executionId);
         if (code === 0) {
           resolve(output);
@@ -240,7 +246,65 @@ export class RemoteExecutionService extends EventEmitter {
         }
       });
 
-      process.on('error', (error) => {
+      child.on('error', (error) => {
+        this.processes.delete(executionId);
+        reject(error);
+      });
+    });
+  }
+
+  private async runScriptOverSsh(
+    connection: RemoteConnection,
+    scriptPath: string,
+    parameters: Record<string, any>,
+    executionId: string
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const sshArgs: string[] = [];
+
+      if (connection.keyPath) {
+        sshArgs.push('-i', connection.keyPath);
+      }
+
+      if (connection.port) {
+        sshArgs.push('-p', String(connection.port));
+      }
+
+      const target = connection.username
+        ? `${connection.username}@${connection.host}`
+        : connection.host;
+      sshArgs.push(target);
+
+      const pwshArgs = this.buildScriptArguments(scriptPath, parameters);
+      const remoteCommand = this.buildRemotePowershellCommand(pwshArgs);
+      sshArgs.push(remoteCommand);
+
+      const child = spawn('ssh', sshArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+      this.processes.set(executionId, child);
+
+      let output = '';
+      let errorOutput = '';
+
+      child.stdout?.on('data', (data) => {
+        output += data.toString();
+        this.updateExecutionProgress(executionId, output.length);
+      });
+
+      child.stderr?.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      child.on('close', (code) => {
+        this.processes.delete(executionId);
+        if (code === 0) {
+          resolve(output);
+        } else {
+          reject(new Error(`Remote script failed with code ${code}: ${errorOutput}`));
+        }
+      });
+
+      child.on('error', (error) => {
         this.processes.delete(executionId);
         reject(error);
       });
@@ -255,6 +319,20 @@ export class RemoteExecutionService extends EventEmitter {
     }
     
     return args;
+  }
+
+  private buildRemotePowershellCommand(args: string[]): string {
+    // Quote each arg for PowerShell if needed
+    const quoteArg = (arg: string) => {
+      // Escape embedded quotes for PowerShell and wrap in double quotes when needed
+      const needsQuotes = /\s|[&(){}^=;!'+,`~]/.test(arg);
+      const escaped = arg.replace(/"/g, '\\"');
+      return needsQuotes ? `"${escaped}"` : escaped;
+    };
+
+    const joined = args.map(quoteArg).join(' ');
+    // Wrap the entire command in quotes for ssh
+    return `powershell.exe ${joined}`;
   }
 
   private updateExecutionProgress(executionId: string, outputLength: number): void {
@@ -333,5 +411,102 @@ export class RemoteExecutionService extends EventEmitter {
     }
 
     return { status: connection.status };
+  }
+
+  // SCP transfer helpers
+  async copyFileToRemote(
+    connectionId: string,
+    localPath: string,
+    remoteDestinationPath: string
+  ): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) {
+      throw new Error('Connection not found');
+    }
+
+    return new Promise((resolve, reject) => {
+      const scpArgs: string[] = [];
+
+      if (connection.keyPath) {
+        scpArgs.push('-i', connection.keyPath);
+      }
+
+      if (connection.port) {
+        scpArgs.push('-P', String(connection.port));
+      }
+
+      const target = connection.username
+        ? `${connection.username}@${connection.host}:${remoteDestinationPath}`
+        : `${connection.host}:${remoteDestinationPath}`;
+
+      scpArgs.push(localPath, target);
+
+      const child = spawn('scp', scpArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+      let errorOutput = '';
+      child.stderr?.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`SCP failed with code ${code}: ${errorOutput}`));
+        }
+      });
+
+      child.on('error', (error) => {
+        reject(error);
+      });
+    });
+  }
+
+  async copyDirectoryToRemote(
+    connectionId: string,
+    localDirectory: string,
+    remoteDestinationDirectory: string
+  ): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) {
+      throw new Error('Connection not found');
+    }
+
+    return new Promise((resolve, reject) => {
+      const scpArgs: string[] = ['-r'];
+
+      if (connection.keyPath) {
+        scpArgs.push('-i', connection.keyPath);
+      }
+
+      if (connection.port) {
+        scpArgs.push('-P', String(connection.port));
+      }
+
+      const target = connection.username
+        ? `${connection.username}@${connection.host}:${remoteDestinationDirectory}`
+        : `${connection.host}:${remoteDestinationDirectory}`;
+
+      scpArgs.push(localDirectory, target);
+
+      const child = spawn('scp', scpArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+      let errorOutput = '';
+      child.stderr?.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`SCP failed with code ${code}: ${errorOutput}`));
+        }
+      });
+
+      child.on('error', (error) => {
+        reject(error);
+      });
+    });
   }
 }

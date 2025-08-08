@@ -2,8 +2,7 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createReadStream, createWriteStream } from 'fs';
-import { pipeline } from 'stream/promises';
+import { createReadStream } from 'fs';
 
 export interface FileTransfer {
   id: string;
@@ -306,7 +305,7 @@ export class FileTransferService extends EventEmitter {
     });
   }
 
-  private async needsSync(localPath: string, remotePath: string, connectionId: string): Promise<boolean> {
+  private async needsSync(_localPath: string, _remotePath: string, _connectionId: string): Promise<boolean> {
     // In a real implementation, this would check file timestamps and sizes
     // For now, we'll assume files need syncing
     return true;

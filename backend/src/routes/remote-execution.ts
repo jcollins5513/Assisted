@@ -16,7 +16,7 @@ router.get('/connections', authMiddleware, async (req, res, next) => {
       data: connections
     });
   } catch (error) {
-    next(createError(500, 'Failed to fetch connections'));
+    next(createError('Failed to fetch connections', 500));
   }
 });
 
@@ -25,7 +25,7 @@ router.get('/connections/:id', authMiddleware, async (req, res, next) => {
   try {
     const connection = remoteService.getConnection(req.params.id);
     if (!connection) {
-      return next(createError(404, 'Connection not found'));
+      return next(createError('Connection not found', 404));
     }
     
     const health = remoteService.getConnectionHealth(req.params.id);
@@ -38,7 +38,7 @@ router.get('/connections/:id', authMiddleware, async (req, res, next) => {
       }
     });
   } catch (error) {
-    next(createError(500, 'Failed to fetch connection'));
+    next(createError('Failed to fetch connection', 500));
   }
 });
 
@@ -48,11 +48,11 @@ router.post('/connections', authMiddleware, async (req, res, next) => {
     const { name, type, host, port } = req.body;
     
     if (!name || !type || !host) {
-      return next(createError(400, 'Name, type, and host are required'));
+      return next(createError('Name, type, and host are required', 400));
     }
     
     if (!['tailscale', 'ssh', 'cloud-tunnel'].includes(type)) {
-      return next(createError(400, 'Invalid connection type'));
+      return next(createError('Invalid connection type', 400));
     }
     
     const connectionId = await remoteService.addConnection({
@@ -69,7 +69,7 @@ router.post('/connections', authMiddleware, async (req, res, next) => {
       data: connection
     });
   } catch (error) {
-    next(createError(500, 'Failed to create connection'));
+    next(createError('Failed to create connection', 500));
   }
 });
 
@@ -83,7 +83,7 @@ router.post('/connections/:id/connect', authMiddleware, async (req, res, next) =
       data: { connected: success }
     });
   } catch (error) {
-    next(createError(500, `Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    next(createError(`Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`, 500));
   }
 });
 
@@ -97,7 +97,7 @@ router.post('/connections/:id/disconnect', authMiddleware, async (req, res, next
       data: { disconnected: true }
     });
   } catch (error) {
-    next(createError(500, `Failed to disconnect: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    next(createError(`Failed to disconnect: ${error instanceof Error ? error.message : 'Unknown error'}`, 500));
   }
 });
 
@@ -118,7 +118,7 @@ router.delete('/connections/:id', authMiddleware, async (req, res, next) => {
       data: { deleted: true }
     });
   } catch (error) {
-    next(createError(500, 'Failed to delete connection'));
+    next(createError('Failed to delete connection', 500));
   }
 });
 
@@ -131,7 +131,7 @@ router.get('/executions', authMiddleware, async (req, res, next) => {
       data: executions
     });
   } catch (error) {
-    next(createError(500, 'Failed to fetch executions'));
+    next(createError('Failed to fetch executions', 500));
   }
 });
 
@@ -140,7 +140,7 @@ router.get('/executions/:id', authMiddleware, async (req, res, next) => {
   try {
     const execution = remoteService.getExecution(req.params.id);
     if (!execution) {
-      return next(createError(404, 'Execution not found'));
+      return next(createError('Execution not found', 404));
     }
     
     res.json({
@@ -148,7 +148,7 @@ router.get('/executions/:id', authMiddleware, async (req, res, next) => {
       data: execution
     });
   } catch (error) {
-    next(createError(500, 'Failed to fetch execution'));
+    next(createError('Failed to fetch execution', 500));
   }
 });
 
@@ -158,7 +158,7 @@ router.post('/executions', authMiddleware, async (req, res, next) => {
     const { connectionId, scriptPath, parameters } = req.body;
     
     if (!connectionId || !scriptPath) {
-      return next(createError(400, 'Connection ID and script path are required'));
+      return next(createError('Connection ID and script path are required', 400));
     }
     
     const executionId = await remoteService.executeScript(connectionId, scriptPath, parameters || {});
@@ -171,7 +171,7 @@ router.post('/executions', authMiddleware, async (req, res, next) => {
       }
     });
   } catch (error) {
-    next(createError(500, `Failed to execute script: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    next(createError(`Failed to execute script: ${error instanceof Error ? error.message : 'Unknown error'}`, 500));
   }
 });
 
@@ -185,43 +185,86 @@ router.post('/executions/:id/stop', authMiddleware, async (req, res, next) => {
       data: { stopped: true }
     });
   } catch (error) {
-    next(createError(500, `Failed to stop execution: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    next(createError(`Failed to stop execution: ${error instanceof Error ? error.message : 'Unknown error'}`, 500));
   }
 });
 
 // Background removal specific endpoint
 router.post('/background-removal', authMiddleware, async (req, res, next) => {
   try {
-    const { connectionId, inputPath, outputPath, model, quality, batchMode } = req.body;
+    const { 
+      connectionId,
+      inputPath,
+      outputPath,
+      model,
+      batchMode,
+      alphaMatting,
+      alphaErode,
+      transparentVideo,
+      frameRate,
+      frameLimit,
+      gpuBatch,
+      workers,
+      overlayVideoPath,
+      overlayImagePath,
+      engine, // 'backgroundremover' | 'rembg'
+      remoteScriptPath // Optional: absolute path on remote host for PowerShell script
+    } = req.body;
     
     if (!connectionId || !inputPath) {
-      return next(createError(400, 'Connection ID and input path are required'));
+      return next(createError('Connection ID and input path are required', 400));
     }
-    
+
+    const useBackgroundRemover = (engine || 'backgroundremover') === 'backgroundremover';
+
     // Build script parameters
     const parameters: Record<string, any> = {
       InputPath: inputPath
     };
     
     if (outputPath) parameters.OutputPath = outputPath;
-    if (model) parameters.Model = model;
-    if (quality) parameters.Quality = quality;
-    if (batchMode) parameters.BatchMode = true; // Corrected from $true to true
+
+    if (useBackgroundRemover) {
+      if (model) parameters.Model = model;
+      if (batchMode) parameters.BatchMode = true;
+      if (alphaMatting) parameters.AlphaMatting = true;
+      if (alphaErode !== undefined) parameters.AlphaErode = alphaErode;
+      if (transparentVideo) parameters.TransparentVideo = true;
+      if (frameRate !== undefined) parameters.FrameRate = frameRate;
+      if (frameLimit !== undefined) parameters.FrameLimit = frameLimit;
+      if (gpuBatch !== undefined) parameters.GpuBatch = gpuBatch;
+      if (workers !== undefined) parameters.Workers = workers;
+      if (overlayVideoPath) parameters.OverlayVideoPath = overlayVideoPath;
+      if (overlayImagePath) parameters.OverlayImagePath = overlayImagePath;
+    } else {
+      // Legacy script parameters
+      if (model) parameters.Model = model;
+      if (batchMode) parameters.BatchMode = true;
+    }
     
-    // Execute the background removal script
-    const scriptPath = path.join(__dirname, '../../scripts/background-removal.ps1');
-    const executionId = await remoteService.executeScript(connectionId, scriptPath, parameters);
+    // Select script
+    let script: string;
+    if (remoteScriptPath && typeof remoteScriptPath === 'string') {
+      script = remoteScriptPath; // Use provided absolute path on remote host
+    } else {
+      script = useBackgroundRemover
+        ? path.join(__dirname, '../../scripts/backgroundremover-cli.ps1')
+        : path.join(__dirname, '../../scripts/background-removal.ps1');
+    }
+
+    const executionId = await remoteService.executeScript(connectionId, script, parameters);
     
     res.status(201).json({
       success: true,
       data: {
         executionId,
         status: 'started',
-        operation: 'background-removal'
+        operation: 'background-removal',
+        engine: useBackgroundRemover ? 'backgroundremover' : 'rembg'
       }
     });
   } catch (error) {
-    next(createError(500, `Failed to start background removal: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    next(createError(`Failed to start background removal: ${error instanceof Error ? error.message : 'Unknown error'}`, 500));
   }
 });
 
@@ -235,7 +278,7 @@ router.get('/connections/:id/health', authMiddleware, async (req, res, next) => 
       data: health
     });
   } catch (error) {
-    next(createError(500, 'Failed to get connection health'));
+    next(createError('Failed to get connection health', 500));
   }
 });
 
