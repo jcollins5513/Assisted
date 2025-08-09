@@ -18,12 +18,18 @@ export const ConversationDashboard: React.FC<ConversationDashboardProps> = ({
 }) => {
   const [performanceScore, setPerformanceScore] = useState(0);
   const [toneHistory, setToneHistory] = useState<Array<{ tone: string; timestamp: number }>>([]);
+  const [salesTechniquesHistory, setSalesTechniquesHistory] = useState<string[]>([]);
 
   // Update performance score when analysis changes
   useEffect(() => {
     if (analysis) {
       setPerformanceScore(analysis.overallScore);
       setToneHistory(prev => [...prev, { tone: analysis.tone, timestamp: analysis.timestamp }]);
+      
+      // Track sales techniques
+      if (analysis.salesTechniques.length > 0) {
+        setSalesTechniquesHistory(prev => [...prev, ...analysis.salesTechniques]);
+      }
     }
   }, [analysis]);
 
@@ -51,6 +57,13 @@ export const ConversationDashboard: React.FC<ConversationDashboardProps> = ({
     return 'Needs Improvement';
   };
 
+  // Get engagement color
+  const getEngagementColor = (score: number) => {
+    if (score >= 70) return 'text-green-600';
+    if (score >= 40) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
       <div className="mb-6">
@@ -65,8 +78,8 @@ export const ConversationDashboard: React.FC<ConversationDashboardProps> = ({
         </div>
       </div>
 
-      {/* Performance Score */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {/* Performance Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg">
           <div className="text-center">
             <div className={`text-3xl font-bold ${getPerformanceColor(performanceScore)}`}>
@@ -98,7 +111,36 @@ export const ConversationDashboard: React.FC<ConversationDashboardProps> = ({
             <div className="text-xs text-purple-600 font-medium">Sales Technique</div>
           </div>
         </div>
+
+        <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-4 rounded-lg">
+          <div className="text-center">
+            <div className={`text-3xl font-bold ${getEngagementColor(analysis?.customerEngagement || 0)}`}>
+              {analysis?.customerEngagement || 0}%
+            </div>
+            <div className="text-sm text-gray-600">Engagement</div>
+            <div className="text-xs text-orange-600 font-medium">Customer Interest</div>
+          </div>
+        </div>
       </div>
+
+      {/* Scenario Progress */}
+      {analysis?.scenarioProgress && analysis.scenarioProgress > 0 && (
+        <div className="mb-6 bg-gradient-to-r from-indigo-50 to-indigo-100 p-4 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold text-indigo-900">Scenario Progress</h4>
+            <span className="text-sm font-medium text-indigo-700">{analysis.scenarioProgress}%</span>
+          </div>
+          <div className="w-full bg-indigo-200 rounded-full h-2">
+            <div 
+              className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${analysis.scenarioProgress}%` }}
+            />
+          </div>
+          <div className="text-xs text-indigo-600 mt-1">
+            Progress on training objectives
+          </div>
+        </div>
+      )}
 
       {/* Current Analysis */}
       {analysis && (
@@ -124,17 +166,30 @@ export const ConversationDashboard: React.FC<ConversationDashboardProps> = ({
             )}
           </div>
 
-          {/* Objections & Phases */}
+          {/* Sales Techniques & Objections */}
           <div className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="font-semibold text-gray-900 mb-3">Conversation Flow</h4>
+            <h4 className="font-semibold text-gray-900 mb-3">Sales Analysis</h4>
             
+            {analysis.salesTechniques.length > 0 && (
+              <div className="mb-3">
+                <h5 className="text-sm font-medium text-green-700 mb-2">Techniques Detected:</h5>
+                <div className="space-y-1">
+                  {analysis.salesTechniques.map((technique, index) => (
+                    <div key={index} className="text-sm text-green-600 bg-green-50 px-2 py-1 rounded">
+                      ✅ {technique}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {analysis.objections.length > 0 && (
               <div className="mb-3">
                 <h5 className="text-sm font-medium text-red-700 mb-2">Objections Detected:</h5>
                 <div className="space-y-1">
                   {analysis.objections.map((objection, index) => (
                     <div key={index} className="text-sm text-red-600 bg-red-50 px-2 py-1 rounded">
-                      • {objection}
+                      ⚠️ {objection}
                     </div>
                   ))}
                 </div>
@@ -183,6 +238,23 @@ export const ConversationDashboard: React.FC<ConversationDashboardProps> = ({
                 <div className="text-sm text-yellow-800">{suggestion}</div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sales Techniques History */}
+      {salesTechniquesHistory.length > 0 && (
+        <div className="mb-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Sales Techniques Used</h4>
+          <div className="flex flex-wrap gap-2">
+            {[...new Set(salesTechniquesHistory)].map((technique, index) => (
+              <span key={index} className="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">
+                {technique}
+              </span>
+            ))}
+          </div>
+          <div className="text-xs text-gray-500 mt-2">
+            Total techniques used: {salesTechniquesHistory.length}
           </div>
         </div>
       )}

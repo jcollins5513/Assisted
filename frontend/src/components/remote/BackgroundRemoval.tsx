@@ -29,6 +29,8 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
     batchMode: false
   });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string>('');
+  const [statusType, setStatusType] = useState<'info' | 'success' | 'warning' | 'error'>('info');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -68,11 +70,14 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
     }
 
     setIsProcessing(true);
+    setStatusMessage('Uploading files to server...');
+    setStatusType('info');
 
     try {
       // Upload files to server
       const uploadedPaths: string[] = [];
       for (const file of selectedFiles) {
+        setStatusMessage(`Uploading ${file.name}...`);
         const res = await apiClient.upload<any>('/uploads/image', file);
         if (!res.success) throw new Error(res.error || 'Upload failed');
         const filePath = res.data?.file?.path || res.data?.path || '';
@@ -118,11 +123,15 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
       });
       if (!startRes.success) throw new Error(startRes.error || 'Failed to start background removal');
 
+      setStatusMessage('Processing images on remote server...');
+      
       // Simulate progress while remote runs
       for (const job of newJobs) {
         await simulateProcessing(job.id);
       }
 
+      setStatusMessage('Finalizing results...');
+      
       // Finalize: copy results back
       const finalizeRes = await apiClient.post<any>('/remote-execution/background-removal/finalize', {
         connectionId: selectedConnection,
@@ -137,10 +146,15 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
         const match = files.find(f => f.file.toLowerCase().includes(j.inputPath.split(/[/\\]/).pop()?.split('.')[0].toLowerCase() || ''));
         return match ? { ...j, status: 'completed', progress: 100, endTime: new Date().toISOString(), outputPath: match.url } : j;
       }));
+
+      setStatusMessage('Background removal completed successfully!');
+      setStatusType('success');
     } catch (err: any) {
       // Mark all current jobs as failed
       setProcessingJobs(prev => prev.map(j => ({ ...j, status: 'failed', error: err?.message || 'Processing failed' })));
-      alert(err?.message || 'Processing failed');
+      const errorMessage = err?.message || 'Processing failed';
+      setStatusMessage(`Processing failed: ${errorMessage}`);
+      setStatusType('error');
     } finally {
       setIsProcessing(false);
       setSelectedFiles([]);
@@ -227,7 +241,7 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
           <select
             value={selectedConnection || ''}
             onChange={(e) => onConnectionSelect(e.target.value || null)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            className="w-full"
           >
             <option value="">Select connection…</option>
             {connections.map(c => (
@@ -236,6 +250,22 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
           </select>
         </div>
       </div>
+
+      {/* Status Banner */}
+      {statusMessage && (
+        <div className={`status-banner status-${statusType}`}>
+          <div className="flex items-center justify-between">
+            <span>{statusMessage}</span>
+            <button
+              onClick={() => setStatusMessage('')}
+              className="ml-2 text-sm opacity-70 hover:opacity-100"
+              aria-label="Dismiss status message"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Connection Selection Notice */}
       {!selectedConnection && (
@@ -265,7 +295,7 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
             </div>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+              className="btn btn-primary"
             >
               Select Files
             </button>
@@ -309,7 +339,7 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
             <select
               value={processingSettings.model}
               onChange={(e) => setProcessingSettings({ ...processingSettings, model: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full"
             >
               <option value="u2net">U²-Net (Recommended)</option>
               <option value="u2netp">U²-Net (Lightweight)</option>
@@ -357,7 +387,7 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
         <button
           onClick={startProcessing}
           disabled={!selectedConnection || selectedFiles.length === 0 || isProcessing}
-          className="px-8 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn btn-success px-8 py-3"
         >
           {isProcessing ? 'Processing...' : 'Start Background Removal'}
         </button>
@@ -391,14 +421,14 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
                     {job.status === 'completed' && (
                       <button
                         onClick={() => downloadResult(job)}
-                        className="px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+                        className="btn btn-primary text-xs px-2 py-1"
                       >
                         Download
                       </button>
                     )}
                     <button
                       onClick={() => removeJob(job.id)}
-                      className="px-2 py-1 text-xs bg-gray-500 hover:bg-gray-600 text-white rounded transition-colors"
+                      className="btn btn-secondary text-xs px-2 py-1"
                     >
                       Remove
                     </button>

@@ -268,7 +268,7 @@ export const ContentPreview: React.FC<ContentPreviewProps> = ({
                     input.value = '';
                   }
                 }}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="flex-1"
               />
               <button
                 onClick={() => {
@@ -278,7 +278,7 @@ export const ContentPreview: React.FC<ContentPreviewProps> = ({
                     input.value = '';
                   }
                 }}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
+                className="btn btn-primary"
               >
                 Add
               </button>

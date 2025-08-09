@@ -133,7 +133,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
         </p>
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+          className="btn btn-primary px-6 py-3"
         >
           Choose Files
         </button>

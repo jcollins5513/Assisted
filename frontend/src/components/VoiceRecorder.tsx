@@ -11,6 +11,50 @@ interface VoiceRecorderProps {
   onFeedbackUpdate?: (feedback: string[]) => void;
 }
 
+interface RolePlayScenario {
+  id: string;
+  title: string;
+  description: string;
+  customerProfile: string;
+  objectives: string[];
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+}
+
+const ROLE_PLAY_SCENARIOS: RolePlayScenario[] = [
+  {
+    id: 'price-objection',
+    title: 'Price Objection Handling',
+    description: 'Customer thinks the car is too expensive',
+    customerProfile: 'Budget-conscious buyer, comparing multiple options',
+    objectives: ['Address price concerns', 'Highlight value proposition', 'Use "Feel, Felt, Found" technique'],
+    difficulty: 'beginner'
+  },
+  {
+    id: 'trade-in-negotiation',
+    title: 'Trade-in Value Negotiation',
+    description: 'Customer wants more for their trade-in',
+    customerProfile: 'Experienced car owner, knows market values',
+    objectives: ['Justify trade-in value', 'Show market comparison', 'Create win-win solution'],
+    difficulty: 'intermediate'
+  },
+  {
+    id: 'financing-concerns',
+    title: 'Financing Application',
+    description: 'Customer worried about credit approval',
+    customerProfile: 'First-time buyer, credit concerns',
+    objectives: ['Build confidence', 'Explain process', 'Offer alternatives'],
+    difficulty: 'intermediate'
+  },
+  {
+    id: 'feature-comparison',
+    title: 'Feature Comparison',
+    description: 'Customer comparing with competitor models',
+    customerProfile: 'Research-oriented, feature-focused',
+    objectives: ['Highlight unique features', 'Demonstrate value', 'Close with confidence'],
+    difficulty: 'advanced'
+  }
+];
+
 export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   userId,
   onAnalysisUpdate,
@@ -36,6 +80,9 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   const [analysis, setAnalysis] = useState<any>(null);
   const [feedback, setFeedback] = useState<string[]>([]);
   const [volumeLevel, setVolumeLevel] = useState(0);
+  const [selectedScenario, setSelectedScenario] = useState<RolePlayScenario | null>(null);
+  const [isRolePlayMode, setIsRolePlayMode] = useState(false);
+  const [scenarioObjectives, setScenarioObjectives] = useState<string[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
 
@@ -43,7 +90,8 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   useEffect(() => {
     const connectToStreaming = async () => {
       try {
-        await audioStreamService.connect('http://localhost:3001', userId);
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3001';
+        await audioStreamService.connect(apiUrl, userId);
         setIsConnected(true);
         
         // Set up analysis listeners
@@ -120,10 +168,12 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         setIsStreaming(true);
       }
       
-      // Send conversation start event
+      // Send conversation start event with scenario info
       audioStreamService.sendConversationEvent('conversation-start', {
         userId,
         timestamp: Date.now(),
+        scenario: selectedScenario?.id,
+        isRolePlay: isRolePlayMode,
       });
       
     } catch (error) {
@@ -146,7 +196,15 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       userId,
       duration,
       timestamp: Date.now(),
+      scenario: selectedScenario?.id,
     });
+  };
+
+  // Handle scenario selection
+  const handleScenarioSelect = (scenario: RolePlayScenario) => {
+    setSelectedScenario(scenario);
+    setIsRolePlayMode(true);
+    setScenarioObjectives(scenario.objectives);
   };
 
   // Format duration
@@ -166,6 +224,69 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
           Record and analyze sales conversations in real-time
         </p>
       </div>
+
+      {/* Role Play Mode Toggle */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium text-gray-700">Role Play Mode</span>
+          <button
+            onClick={() => setIsRolePlayMode(!isRolePlayMode)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              isRolePlayMode ? 'bg-blue-600' : 'bg-gray-200'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                isRolePlayMode ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+        
+        {isRolePlayMode && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <h4 className="text-sm font-medium text-blue-900 mb-2">Training Scenarios</h4>
+            <div className="space-y-2">
+              {ROLE_PLAY_SCENARIOS.map((scenario) => (
+                <button
+                  key={scenario.id}
+                  onClick={() => handleScenarioSelect(scenario)}
+                  className={`w-full text-left p-2 rounded text-xs transition-colors ${
+                    selectedScenario?.id === scenario.id
+                      ? 'bg-blue-200 text-blue-900'
+                      : 'bg-white text-gray-700 hover:bg-blue-100'
+                  }`}
+                >
+                  <div className="font-medium">{scenario.title}</div>
+                  <div className="text-gray-600">{scenario.description}</div>
+                  <div className={`inline-block px-1 py-0.5 rounded text-xs mt-1 ${
+                    scenario.difficulty === 'beginner' ? 'bg-green-100 text-green-800' :
+                    scenario.difficulty === 'intermediate' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {scenario.difficulty}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Selected Scenario Objectives */}
+      {selectedScenario && isRolePlayMode && (
+        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-3">
+          <h4 className="text-sm font-medium text-green-900 mb-2">Scenario Objectives</h4>
+          <div className="space-y-1">
+            {scenarioObjectives.map((objective, index) => (
+              <div key={index} className="flex items-center text-xs text-green-800">
+                <div className="w-1.5 h-1.5 bg-green-600 rounded-full mr-2" />
+                {objective}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Connection Status */}
       <div className="mb-4">
@@ -261,7 +382,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
           </audio>
           <button
             onClick={clearRecording}
-            className="mt-2 w-full px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded transition-colors"
+            className="btn btn-secondary w-full mt-2"
           >
             Clear Recording
           </button>

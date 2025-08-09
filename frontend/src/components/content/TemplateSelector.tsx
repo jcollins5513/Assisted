@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { contentAPI } from '@/services/api';
 
 export interface MarketingTemplate {
   id: string;
@@ -8,23 +9,30 @@ export interface MarketingTemplate {
   description: string;
   category: string;
   icon: string;
+  tags: string[];
   fields: TemplateField[];
   example: string;
-  tags: string[];
 }
 
 export interface TemplateField {
   name: string;
   label: string;
-  type: 'text' | 'number' | 'select' | 'textarea';
+  type: 'text' | 'number' | 'textarea' | 'select';
   required: boolean;
   placeholder?: string;
   options?: string[];
-  validation?: {
-    min?: number;
-    max?: number;
-    pattern?: string;
-  };
+}
+
+export interface GeneratedContent {
+  id: string;
+  text: string;
+  hashtags: string[];
+  suggestedImage: string;
+  variations: string[];
+  quality: number;
+  generatedAt: Date;
+  template: string;
+  vehicleData: Record<string, any>;
 }
 
 interface TemplateSelectorProps {
@@ -36,106 +44,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onTemplateSe
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-
-  // Mock templates data - in real app, this would come from API
-  const mockTemplates: MarketingTemplate[] = [
-    {
-      id: 'just-arrived',
-      name: 'Just Arrived',
-      description: 'New vehicle arrival announcement',
-      category: 'inventory',
-      icon: '🚗',
-      tags: ['new', 'arrival', 'inventory'],
-      fields: [
-        { name: 'vehicleMake', label: 'Vehicle Make', type: 'text', required: true, placeholder: 'e.g., Honda' },
-        { name: 'vehicleModel', label: 'Vehicle Model', type: 'text', required: true, placeholder: 'e.g., Civic' },
-        { name: 'year', label: 'Year', type: 'number', required: true, placeholder: 'e.g., 2024' },
-        { name: 'price', label: 'Price', type: 'text', required: true, placeholder: 'e.g., $28,500' },
-        { name: 'features', label: 'Key Features', type: 'textarea', required: false, placeholder: 'e.g., Apple CarPlay, Honda Sensing' }
-      ],
-      example: '🚗 Just arrived! 2024 Honda Civic EX-L in Crystal Black Pearl. Only $28,500! Features include Apple CarPlay, Honda Sensing, and premium audio system. Call us today!'
-    },
-    {
-      id: 'managers-special',
-      name: 'Manager\'s Special',
-      description: 'Limited time special offers',
-      category: 'promotions',
-      icon: '🔥',
-      tags: ['special', 'offer', 'limited-time'],
-      fields: [
-        { name: 'vehicleMake', label: 'Vehicle Make', type: 'text', required: true, placeholder: 'e.g., Toyota' },
-        { name: 'vehicleModel', label: 'Vehicle Model', type: 'text', required: true, placeholder: 'e.g., Camry' },
-        { name: 'year', label: 'Year', type: 'number', required: true, placeholder: 'e.g., 2023' },
-        { name: 'originalPrice', label: 'Original Price', type: 'text', required: true, placeholder: 'e.g., $32,000' },
-        { name: 'salePrice', label: 'Sale Price', type: 'text', required: true, placeholder: 'e.g., $28,500' },
-        { name: 'endDate', label: 'Offer End Date', type: 'text', required: true, placeholder: 'e.g., Friday' }
-      ],
-      example: '🔥 MANAGER\'S SPECIAL! 2023 Toyota Camry LE was $32,000, now only $28,500! This offer ends Friday. Don\'t miss out on this incredible deal!'
-    },
-    {
-      id: 'financing-offer',
-      name: 'Financing Offer',
-      description: 'Special financing promotions',
-      category: 'financing',
-      icon: '💳',
-      tags: ['financing', 'payment', 'credit'],
-      fields: [
-        { name: 'vehicleMake', label: 'Vehicle Make', type: 'text', required: true, placeholder: 'e.g., Ford' },
-        { name: 'vehicleModel', label: 'Vehicle Model', type: 'text', required: true, placeholder: 'e.g., Escape' },
-        { name: 'year', label: 'Year', type: 'number', required: true, placeholder: 'e.g., 2024' },
-        { name: 'monthlyPayment', label: 'Monthly Payment', type: 'text', required: true, placeholder: 'e.g., $299' },
-        { name: 'term', label: 'Term (months)', type: 'number', required: true, placeholder: 'e.g., 60' },
-        { name: 'downPayment', label: 'Down Payment', type: 'text', required: true, placeholder: 'e.g., $0' }
-      ],
-      example: '💳 Special financing available! 2024 Ford Escape SEL for only $299/month for 60 months with $0 down! Perfect credit not required. Apply today!'
-    },
-    {
-      id: 'test-drive',
-      name: 'Test Drive Invitation',
-      description: 'Invite customers for test drives',
-      category: 'engagement',
-      icon: '🎯',
-      tags: ['test-drive', 'invitation', 'engagement'],
-      fields: [
-        { name: 'vehicleMake', label: 'Vehicle Make', type: 'text', required: true, placeholder: 'e.g., Hyundai' },
-        { name: 'vehicleModel', label: 'Vehicle Model', type: 'text', required: true, placeholder: 'e.g., Tucson' },
-        { name: 'year', label: 'Year', type: 'number', required: true, placeholder: 'e.g., 2024' },
-        { name: 'location', label: 'Location', type: 'text', required: true, placeholder: 'e.g., 123 Main St' },
-        { name: 'contactInfo', label: 'Contact Info', type: 'text', required: true, placeholder: 'e.g., (555) 123-4567' }
-      ],
-      example: '🚗 Ready for a test drive? Come experience the 2024 Hyundai Tucson Limited! Visit us at 123 Main St or call (555) 123-4567 to schedule your appointment.'
-    },
-    {
-      id: 'service-reminder',
-      name: 'Service Reminder',
-      description: 'Service appointment reminders',
-      category: 'service',
-      icon: '🔧',
-      tags: ['service', 'maintenance', 'reminder'],
-      fields: [
-        { name: 'serviceType', label: 'Service Type', type: 'select', required: true, options: ['Oil Change', 'Tire Rotation', 'Brake Service', 'Full Inspection'] },
-        { name: 'mileage', label: 'Current Mileage', type: 'number', required: true, placeholder: 'e.g., 45,000' },
-        { name: 'dueDate', label: 'Due Date', type: 'text', required: true, placeholder: 'e.g., Next Week' },
-        { name: 'specialOffer', label: 'Special Offer', type: 'text', required: false, placeholder: 'e.g., 20% off this month' }
-      ],
-      example: '🔧 Time for your scheduled service! Your vehicle is due for an oil change at 45,000 miles. Book your appointment today and save 20% this month!'
-    },
-    {
-      id: 'customer-review',
-      name: 'Customer Review',
-      description: 'Share positive customer experiences',
-      category: 'social-proof',
-      icon: '⭐',
-      tags: ['review', 'testimonial', 'social-proof'],
-      fields: [
-        { name: 'customerName', label: 'Customer Name', type: 'text', required: true, placeholder: 'e.g., John D.' },
-        { name: 'vehiclePurchased', label: 'Vehicle Purchased', type: 'text', required: true, placeholder: 'e.g., 2024 Honda CR-V' },
-        { name: 'reviewText', label: 'Review Text', type: 'textarea', required: true, placeholder: 'What did the customer say?' },
-        { name: 'rating', label: 'Rating', type: 'select', required: true, options: ['5 Stars', '4 Stars', '3 Stars'] }
-      ],
-      example: '⭐ "Amazing experience buying my 2024 Honda CR-V! The team was professional and made the process so easy. Highly recommend!" - John D.'
-    }
-  ];
+  const [error, setError] = useState<string | null>(null);
 
   const categories = [
     { id: 'all', name: 'All Templates', icon: '📋' },
@@ -148,11 +57,24 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onTemplateSe
   ];
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setTemplates(mockTemplates);
-      setLoading(false);
-    }, 1000);
+    const loadTemplates = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await contentAPI.getTemplates();
+        if (response.data?.templates) {
+          setTemplates(response.data.templates);
+        }
+      } catch (err) {
+        console.error('Failed to load templates:', err);
+        setError('Failed to load templates. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadTemplates();
   }, []);
 
   const filteredTemplates = templates.filter(template => {
@@ -160,30 +82,61 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onTemplateSe
     const matchesSearch = template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          template.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          template.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+    
     return matchesCategory && matchesSearch;
   });
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-lg p-8">
-        <div className="flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-          <span className="ml-3 text-gray-600">Loading templates...</span>
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-center py-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading templates...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="text-center py-8">
+          <div className="text-red-600 mb-4">
+            <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="btn btn-primary"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
+    <div className="bg-white rounded-lg shadow p-6">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Choose a Template</h2>
-        <p className="text-gray-600">Select a marketing template to start creating engaging content</p>
+        <p className="text-gray-600">
+          Select a marketing template to create engaging content for your dealership
+        </p>
       </div>
 
       {/* Search Bar */}
       <div className="mb-6">
         <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
           <input
             type="text"
             placeholder="Search templates..."
@@ -191,11 +144,6 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onTemplateSe
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
         </div>
       </div>
 
@@ -206,7 +154,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onTemplateSe
             <button
               key={category.id}
               onClick={() => setSelectedCategory(category.id)}
-              className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 selectedCategory === category.id
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -220,70 +168,51 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onTemplateSe
       </div>
 
       {/* Templates Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTemplates.map((template) => (
           <div
             key={template.id}
-            className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer"
             onClick={() => onTemplateSelect(template)}
+            className="border border-gray-200 rounded-lg p-4 cursor-pointer hover:border-blue-300 hover:shadow-md transition-all duration-200"
           >
-            <div className="flex items-center mb-4">
-              <span className="text-3xl mr-3">{template.icon}</span>
-              <div>
-                <h3 className="font-semibold text-gray-900">{template.name}</h3>
-                <p className="text-sm text-gray-600">{template.category}</p>
-              </div>
-            </div>
-            
-            <p className="text-gray-700 mb-4 text-sm">{template.description}</p>
-            
-            <div className="mb-4">
+            <div className="flex items-start justify-between mb-3">
+              <div className="text-2xl">{template.icon}</div>
               <div className="flex flex-wrap gap-1">
-                {template.tags.slice(0, 3).map((tag, index) => (
+                {template.tags.slice(0, 2).map((tag, index) => (
                   <span
                     key={index}
-                    className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
+                    className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
                   >
                     {tag}
                   </span>
                 ))}
-                {template.tags.length > 3 && (
-                  <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                    +{template.tags.length - 3}
+                {template.tags.length > 2 && (
+                  <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                    +{template.tags.length - 2}
                   </span>
                 )}
               </div>
             </div>
             
-            <div className="text-xs text-gray-500 mb-4">
-              <div className="font-medium mb-1">Required Fields:</div>
-              <div className="flex flex-wrap gap-1">
-                {template.fields.filter(f => f.required).slice(0, 3).map((field, index) => (
-                  <span key={index} className="px-2 py-1 bg-gray-100 rounded">
-                    {field.label}
-                  </span>
-                ))}
-                {template.fields.filter(f => f.required).length > 3 && (
-                  <span className="px-2 py-1 bg-gray-100 rounded">
-                    +{template.fields.filter(f => f.required).length - 3}
-                  </span>
-                )}
-              </div>
-            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">{template.name}</h3>
+            <p className="text-sm text-gray-600 mb-3">{template.description}</p>
             
-            <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded">
-              <div className="font-medium mb-1">Example:</div>
-              <div className="line-clamp-3">{template.example}</div>
+            <div className="text-xs text-gray-500">
+              {template.fields.length} fields • {template.category}
             </div>
           </div>
         ))}
       </div>
 
       {filteredTemplates.length === 0 && (
-        <div className="text-center py-12">
-          <div className="text-6xl mb-4">🔍</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No templates found</h3>
-          <p className="text-gray-600">Try adjusting your search or category filter</p>
+        <div className="text-center py-8">
+          <div className="text-gray-400 mb-4">
+            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <p className="text-gray-600">No templates found matching your criteria.</p>
+          <p className="text-sm text-gray-500 mt-2">Try adjusting your search or category filter.</p>
         </div>
       )}
     </div>

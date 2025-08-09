@@ -130,7 +130,7 @@ export function ConnectionManager({ onConnectionSelect, selectedConnection }: Co
         <h2 className="text-xl font-semibold text-gray-900">Remote Connections</h2>
         <button
           onClick={() => setShowAddForm(true)}
-          className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+          className="btn btn-primary"
         >
           Add Connection
         </button>
@@ -219,13 +219,13 @@ export function ConnectionManager({ onConnectionSelect, selectedConnection }: Co
               <button
                 type="button"
                 onClick={() => setShowAddForm(false)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                className="btn btn-secondary"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                className="btn btn-primary"
               >
                 Add Connection
               </button>

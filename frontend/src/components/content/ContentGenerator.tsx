@@ -1,86 +1,87 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MarketingTemplate } from './TemplateSelector';
-import { UploadedImage } from './ImageUploader';
-
-export interface GeneratedContent {
-  id: string;
-  text: string;
-  hashtags: string[];
-  suggestedImage: string;
-  variations: string[];
-  quality: number;
-  generatedAt: Date;
-  template: string;
-  vehicleData: Record<string, any>;
-}
+import { MarketingTemplate, GeneratedContent } from './TemplateSelector';
+import { ImageUploader } from './ImageUploader';
+import { ContentPreview } from './ContentPreview';
+import { SocialMediaPublisher } from './SocialMediaPublisher';
+import { contentAPI } from '@/services/api';
 
 interface ContentGeneratorProps {
   selectedTemplate: MarketingTemplate;
-  uploadedImages: UploadedImage[];
-  onContentGenerated: (content: GeneratedContent) => void;
+  onContentGenerated?: (content: GeneratedContent) => void;
 }
 
 export const ContentGenerator: React.FC<ContentGeneratorProps> = ({
   selectedTemplate,
-  uploadedImages,
-  onContentGenerated
+  onContentGenerated,
 }) => {
   const [formData, setFormData] = useState<Record<string, any>>({});
-  const [generating, setGenerating] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<Array<{ file: File; preview: string }>>([]);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
-  const [selectedVariation, setSelectedVariation] = useState<number>(0);
-  const [customPrompt, setCustomPrompt] = useState('');
+  const [selectedVariation, setSelectedVariation] = useState(0);
+  const [generating, setGenerating] = useState(false);
+  const [customInstructions, setCustomInstructions] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Initialize form data based on template fields
+  // Initialize form data with template fields
   useEffect(() => {
     const initialData: Record<string, any> = {};
     selectedTemplate.fields.forEach(field => {
       initialData[field.name] = '';
     });
     setFormData(initialData);
+    setErrors({});
   }, [selectedTemplate]);
+
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    
+    selectedTemplate.fields.forEach(field => {
+      if (field.required && (!formData[field.name] || formData[field.name].toString().trim() === '')) {
+        newErrors[field.name] = `${field.label} is required`;
+      }
+    });
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleInputChange = (fieldName: string, value: any) => {
     setFormData(prev => ({
       ...prev,
-      [fieldName]: value
+      [fieldName]: value,
     }));
-  };
-
-  const validateForm = (): boolean => {
-    const requiredFields = selectedTemplate.fields.filter(field => field.required);
-    return requiredFields.every(field => formData[field.name] && formData[field.name].trim() !== '');
+    
+    // Clear error when user starts typing
+    if (errors[fieldName]) {
+      setErrors(prev => ({
+        ...prev,
+        [fieldName]: '',
+      }));
+    }
   };
 
   const generateContent = async () => {
     if (!validateForm()) {
-      alert('Please fill in all required fields');
       return;
     }
 
     setGenerating(true);
 
     try {
-      // Simulate API call to OpenAI
-      const mockGeneratedContent: GeneratedContent = {
-        id: `content-${Date.now()}`,
-        text: generateMockContent(selectedTemplate, formData),
-        hashtags: generateHashtags(selectedTemplate, formData),
-        suggestedImage: uploadedImages[0]?.preview || '',
-        variations: generateVariations(selectedTemplate, formData),
-        quality: Math.floor(Math.random() * 30) + 70, // 70-100
-        generatedAt: new Date(),
-        template: selectedTemplate.id,
-        vehicleData: formData
-      };
+      // Call real API to generate content
+      const response = await contentAPI.generateContent({
+        templateId: selectedTemplate.id,
+        formData,
+        instructions: customInstructions,
+      });
 
-      // Simulate processing time
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      setGeneratedContent(mockGeneratedContent);
-      setSelectedVariation(0);
+      if (response.data) {
+        setGeneratedContent(response.data);
+        setSelectedVariation(0);
+        onContentGenerated?.(response.data);
+      }
     } catch (error) {
       console.error('Error generating content:', error);
       alert('Failed to generate content. Please try again.');
@@ -89,100 +90,47 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = ({
     }
   };
 
-  const generateMockContent = (template: MarketingTemplate, data: Record<string, any>): string => {
-    const baseContent = template.example;
-    
-    // Replace placeholders with actual data
-    let content = baseContent;
-    Object.entries(data).forEach(([key, value]) => {
-      const placeholder = new RegExp(`\\b${key}\\b`, 'gi');
-      content = content.replace(placeholder, value);
+  const handleImageUpload = (files: File[]) => {
+    const newImages = files.map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    setUploadedImages(prev => [...prev, ...newImages]);
+  };
+
+  const handleImageRemove = (index: number) => {
+    setUploadedImages(prev => {
+      const newImages = [...prev];
+      URL.revokeObjectURL(newImages[index].preview);
+      newImages.splice(index, 1);
+      return newImages;
     });
-
-    // Add some variety based on template type
-    switch (template.id) {
-      case 'just-arrived':
-        return `${content} 🚗 Don't miss out on this amazing vehicle! Call us today for more details.`;
-      case 'managers-special':
-        return `${content} ⏰ Limited time offer - act fast!`;
-      case 'financing-offer':
-        return `${content} 💳 Apply online or visit us today!`;
-      case 'test-drive':
-        return `${content} 📞 Schedule your test drive now!`;
-      default:
-        return content;
-    }
   };
 
-  const generateHashtags = (template: MarketingTemplate, data: Record<string, any>): string[] => {
-    const baseHashtags = template.tags.map(tag => `#${tag.replace(/\s+/g, '')}`);
-    
-    // Add vehicle-specific hashtags
-    if (data.vehicleMake) {
-      baseHashtags.push(`#${data.vehicleMake.replace(/\s+/g, '')}`);
-    }
-    if (data.vehicleModel) {
-      baseHashtags.push(`#${data.vehicleModel.replace(/\s+/g, '')}`);
-    }
-    if (data.year) {
-      baseHashtags.push(`#${data.year}`);
-    }
+  const handleSaveContent = async () => {
+    if (!generatedContent) return;
 
-    // Add category-specific hashtags
-    switch (template.category) {
-      case 'inventory':
-        baseHashtags.push('#NewArrival', '#CarSales');
-        break;
-      case 'promotions':
-        baseHashtags.push('#SpecialOffer', '#DealOfTheDay');
-        break;
-      case 'financing':
-        baseHashtags.push('#Financing', '#AutoLoan');
-        break;
-      case 'engagement':
-        baseHashtags.push('#TestDrive', '#VisitUs');
-        break;
-    }
-
-    return baseHashtags.slice(0, 8); // Limit to 8 hashtags
-  };
-
-  const generateVariations = (template: MarketingTemplate, data: Record<string, any>): string[] => {
-    const baseContent = generateMockContent(template, data);
-    
-    return [
-      baseContent,
-      `${baseContent} 🔥`,
-      `${baseContent} ✨`,
-      `${baseContent} 🎉`,
-      `${baseContent} 💯`
-    ];
-  };
-
-  const handleContinue = () => {
-    if (generatedContent) {
-      const finalContent = {
-        ...generatedContent,
-        text: generatedContent.variations[selectedVariation]
-      };
-      onContentGenerated(finalContent);
+    try {
+      await contentAPI.saveContent({
+        templateId: selectedTemplate.id,
+        generatedContent,
+        formData,
+      });
+      
+      alert('Content saved successfully!');
+    } catch (error) {
+      console.error('Error saving content:', error);
+      alert('Failed to save content. Please try again.');
     }
   };
-
-  const canGenerate = validateForm() && !generating;
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Generate Content</h2>
-        <p className="text-gray-600">
-          Fill in the details and let AI create engaging content for your {selectedTemplate.name}
-        </p>
-      </div>
-
-      {/* Template Form */}
-      <div className="mb-8">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Template Details</h3>
+    <div className="space-y-6">
+      {/* Form Fields */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Fill in the Details
+        </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {selectedTemplate.fields.map((field) => (
@@ -192,31 +140,23 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = ({
                 {field.required && <span className="text-red-500 ml-1">*</span>}
               </label>
               
-              {field.type === 'text' && (
-                <input
-                  type="text"
+              {field.type === 'textarea' ? (
+                <textarea
                   value={formData[field.name] || ''}
                   onChange={(e) => handleInputChange(field.name, e.target.value)}
                   placeholder={field.placeholder}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={3}
+                  className={`w-full rounded-md border ${
+                    errors[field.name] ? 'border-red-300' : 'border-gray-300'
+                  } px-3 py-2 focus:border-blue-500 focus:ring-blue-500`}
                 />
-              )}
-              
-              {field.type === 'number' && (
-                <input
-                  type="number"
-                  value={formData[field.name] || ''}
-                  onChange={(e) => handleInputChange(field.name, e.target.value)}
-                  placeholder={field.placeholder}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              )}
-              
-              {field.type === 'select' && (
+              ) : field.type === 'select' ? (
                 <select
                   value={formData[field.name] || ''}
                   onChange={(e) => handleInputChange(field.name, e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full rounded-md border ${
+                    errors[field.name] ? 'border-red-300' : 'border-gray-300'
+                  } px-3 py-2 focus:border-blue-500 focus:ring-blue-500`}
                 >
                   <option value="">Select {field.label}</option>
                   {field.options?.map((option) => (
@@ -225,140 +165,84 @@ export const ContentGenerator: React.FC<ContentGeneratorProps> = ({
                     </option>
                   ))}
                 </select>
-              )}
-              
-              {field.type === 'textarea' && (
-                <textarea
+              ) : (
+                <input
+                  type={field.type}
                   value={formData[field.name] || ''}
                   onChange={(e) => handleInputChange(field.name, e.target.value)}
                   placeholder={field.placeholder}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full rounded-md border ${
+                    errors[field.name] ? 'border-red-300' : 'border-gray-300'
+                  } px-3 py-2 focus:border-blue-500 focus:ring-blue-500`}
                 />
+              )}
+              
+              {errors[field.name] && (
+                <p className="text-sm text-red-600">{errors[field.name]}</p>
               )}
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Custom Prompt */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Custom Instructions (Optional)
-        </label>
-        <textarea
-          value={customPrompt}
-          onChange={(e) => setCustomPrompt(e.target.value)}
-          placeholder="Add any specific instructions for content generation..."
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-      </div>
-
-      {/* Generate Button */}
-      <div className="mb-6">
-        <button
-          onClick={generateContent}
-          disabled={!canGenerate}
-          className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
-            canGenerate
-              ? 'bg-blue-500 hover:bg-blue-600 text-white'
-              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-          }`}
-        >
-          {generating ? (
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-              Generating Content...
-            </div>
-          ) : (
-            'Generate Content with AI'
-          )}
-        </button>
-      </div>
-
-      {/* Generated Content */}
-      {generatedContent && (
-        <div className="space-y-6">
-          <div className="border-t pt-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Generated Content</h3>
-            
-            {/* Content Quality Score */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">Content Quality</span>
-                <span className="text-sm text-gray-600">{generatedContent.quality}/100</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${generatedContent.quality}%` }}
-                ></div>
-              </div>
-            </div>
-
-            {/* Content Variations */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Variation
-              </label>
-              <div className="space-y-2">
-                {generatedContent.variations.map((variation, index) => (
-                  <div
-                    key={index}
-                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                      selectedVariation === index
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => setSelectedVariation(index)}
-                  >
-                    <div className="text-sm text-gray-900">{variation}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Hashtags */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Suggested Hashtags
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {generatedContent.hashtags.map((hashtag, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
-                  >
-                    {hashtag}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Continue Button */}
-            <div className="flex justify-end">
-              <button
-                onClick={handleContinue}
-                className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
-              >
-                Continue to Preview
-              </button>
-            </div>
-          </div>
+        {/* Custom Instructions */}
+        <div className="mt-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Custom Instructions (Optional)
+          </label>
+          <textarea
+            value={customInstructions}
+            onChange={(e) => setCustomInstructions(e.target.value)}
+            placeholder="Add any specific instructions for content generation..."
+            rows={3}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+          />
         </div>
+
+        {/* Generate Button */}
+        <div className="mt-6">
+          <button
+            onClick={generateContent}
+            disabled={generating}
+            className="btn btn-primary w-full py-3"
+          >
+            {generating ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                Generating Content...
+              </div>
+            ) : (
+              'Generate Content'
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Image Upload */}
+      <ImageUploader
+        onImagesUploaded={handleImageUpload}
+        onImageRemove={handleImageRemove}
+        uploadedImages={uploadedImages}
+      />
+
+      {/* Generated Content Preview */}
+      {generatedContent && (
+        <ContentPreview
+          content={generatedContent}
+          selectedVariation={selectedVariation}
+          onVariationChange={setSelectedVariation}
+          onSave={handleSaveContent}
+        />
       )}
 
-      {/* Tips */}
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-        <h4 className="font-medium text-gray-900 mb-2">💡 Content Generation Tips:</h4>
-        <ul className="text-sm text-gray-600 space-y-1">
-          <li>• Be specific with vehicle details for better results</li>
-          <li>• Include pricing information when available</li>
-          <li>• Add custom instructions for unique requirements</li>
-          <li>• Review and edit generated content before publishing</li>
-        </ul>
-      </div>
+      {/* Social Media Publishing */}
+      {generatedContent && (
+        <SocialMediaPublisher
+          content={generatedContent}
+          onPublished={() => {
+            alert('Content published successfully!');
+          }}
+        />
+      )}
     </div>
   );
 };

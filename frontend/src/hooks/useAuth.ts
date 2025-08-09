@@ -1,316 +1,125 @@
-import { useState, useEffect, useCallback } from 'react';
-import { authService, User, LoginCredentials, RegisterData, UserSettings } from '@/services/auth';
+import { useState, useEffect, createContext, useContext } from 'react';
+import { authAPI, usersAPI } from '@/services/api';
 
-// Types
-export interface AuthState {
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  createdAt: string;
+  lastLogin?: string;
+}
+
+interface AuthContextType {
   user: User | null;
-  isAuthenticated: boolean;
   loading: boolean;
   error: string | null;
-}
-
-export interface UseAuthReturn extends AuthState {
-  login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
-  register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (updates: Partial<User>) => Promise<{ success: boolean; error?: string }>;
-  updateSettings: (settings: Partial<UserSettings>) => Promise<{ success: boolean; error?: string }>;
-  hasRole: (role: User['role']) => boolean;
-  hasAnyRole: (roles: User['role'][]) => boolean;
-  canAccess: (feature: string) => boolean;
-  getUserSettings: () => UserSettings;
-  refreshToken: () => Promise<boolean>;
-  verifyToken: () => Promise<boolean>;
+  clearError: () => void;
 }
 
-// Custom hook for authentication
-export function useAuth(): UseAuthReturn {
-  const [state, setState] = useState<AuthState>({
-    user: null,
-    isAuthenticated: false,
-    loading: true,
-    error: null,
-  });
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-  // Initialize authentication state
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Check if user is logged in on mount
   useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        const user = authService.getCurrentUser();
-        const isAuthenticated = authService.isAuthenticated();
-
-        if (isAuthenticated && user) {
-          // Verify token is still valid
-          const isValid = await authService.verifyToken();
-          
-          if (isValid) {
-            setState({
-              user,
-              isAuthenticated: true,
-              loading: false,
-              error: null,
-            });
-          } else {
-            // Token is invalid, clear auth
-            await authService.logout();
-            setState({
-              user: null,
-              isAuthenticated: false,
-              loading: false,
-              error: null,
-            });
-          }
-        } else {
-          setState({
-            user: null,
-            isAuthenticated: false,
-            loading: false,
-            error: null,
-          });
+    const checkAuth = async () => {
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        try {
+          const response = await authAPI.getProfile();
+          setUser(response.data.user);
+        } catch (err) {
+          console.error('Auth check failed:', err);
+          localStorage.removeItem('authToken');
         }
-      } catch (error) {
-        setState({
-          user: null,
-          isAuthenticated: false,
-          loading: false,
-          error: 'Failed to initialize authentication',
-        });
       }
+      setLoading(false);
     };
 
-    initializeAuth();
+    checkAuth();
   }, []);
 
-  // Login function
-  const login = useCallback(async (credentials: LoginCredentials) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-
+  const login = async (email: string, password: string) => {
     try {
-      const result = await authService.login(credentials);
+      setError(null);
+      setLoading(true);
       
-      if (result.success && result.user) {
-        setState({
-          user: result.user,
-          isAuthenticated: true,
-          loading: false,
-          error: null,
-        });
-        return { success: true };
-      } else {
-        setState(prev => ({
-          ...prev,
-          loading: false,
-          error: result.error || 'Login failed',
-        }));
-        return { success: false, error: result.error };
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Login failed';
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: errorMessage,
-      }));
-      return { success: false, error: errorMessage };
-    }
-  }, []);
-
-  // Register function
-  const register = useCallback(async (data: RegisterData) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-
-    try {
-      const result = await authService.register(data);
+      const response = await authAPI.login({ email, password });
+      const { token, user: userData } = response.data;
       
-      if (result.success && result.user) {
-        setState({
-          user: result.user,
-          isAuthenticated: true,
-          loading: false,
-          error: null,
-        });
-        return { success: true };
-      } else {
-        setState(prev => ({
-          ...prev,
-          loading: false,
-          error: result.error || 'Registration failed',
-        }));
-        return { success: false, error: result.error };
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Registration failed';
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: errorMessage,
-      }));
-      return { success: false, error: errorMessage };
+      localStorage.setItem('authToken', token);
+      setUser(userData);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || 'Login failed. Please try again.';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
-  // Logout function
-  const logout = useCallback(async () => {
-    setState(prev => ({ ...prev, loading: true }));
-
+  const register = async (email: string, password: string, name: string) => {
     try {
-      await authService.logout();
-      setState({
-        user: null,
-        isAuthenticated: false,
-        loading: false,
-        error: null,
-      });
-    } catch (error) {
-      // Even if logout fails, clear local state
-      setState({
-        user: null,
-        isAuthenticated: false,
-        loading: false,
-        error: null,
-      });
-    }
-  }, []);
-
-  // Update profile function
-  const updateProfile = useCallback(async (updates: Partial<User>) => {
-    try {
-      const result = await authService.updateProfile(updates);
+      setError(null);
+      setLoading(true);
       
-      if (result.success && result.user) {
-        setState(prev => ({
-          ...prev,
-          user: result.user,
-        }));
-        return { success: true };
-      } else {
-        return { success: false, error: result.error };
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Profile update failed';
-      return { success: false, error: errorMessage };
-    }
-  }, []);
-
-  // Update settings function
-  const updateSettings = useCallback(async (settings: Partial<UserSettings>) => {
-    try {
-      const result = await authService.updateSettings(settings);
+      const response = await authAPI.register({ email, password, name });
+      const { token, user: userData } = response.data;
       
-      if (result.success && result.settings) {
-        // Update user settings in state
-        setState(prev => ({
-          ...prev,
-          user: prev.user ? {
-            ...prev.user,
-            settings: result.settings,
-          } : null,
-        }));
-        return { success: true };
-      } else {
-        return { success: false, error: result.error };
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Settings update failed';
-      return { success: false, error: errorMessage };
+      localStorage.setItem('authToken', token);
+      setUser(userData);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || 'Registration failed. Please try again.';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
-  // Role checking functions
-  const hasRole = useCallback((role: User['role']) => {
-    return authService.hasRole(role);
-  }, []);
-
-  const hasAnyRole = useCallback((roles: User['role'][]) => {
-    return authService.hasAnyRole(roles);
-  }, []);
-
-  const canAccess = useCallback((feature: string) => {
-    return authService.canAccess(feature);
-  }, []);
-
-  // Get user settings
-  const getUserSettings = useCallback(() => {
-    return authService.getUserSettings();
-  }, []);
-
-  // Refresh token
-  const refreshToken = useCallback(async () => {
+  const logout = async () => {
     try {
-      const success = await authService.refreshToken();
-      
-      if (success) {
-        const user = authService.getCurrentUser();
-        setState(prev => ({
-          ...prev,
-          user: user || prev.user,
-        }));
-      }
-      
-      return success;
-    } catch (error) {
-      return false;
+      await authAPI.logout();
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      localStorage.removeItem('authToken');
+      setUser(null);
     }
-  }, []);
+  };
 
-  // Verify token
-  const verifyToken = useCallback(async () => {
-    try {
-      return await authService.verifyToken();
-    } catch (error) {
-      return false;
-    }
-  }, []);
+  const clearError = () => {
+    setError(null);
+  };
 
-  return {
-    ...state,
+  const value: AuthContextType = {
+    user,
+    loading,
+    error,
     login,
     register,
     logout,
-    updateProfile,
-    updateSettings,
-    hasRole,
-    hasAnyRole,
-    canAccess,
-    getUserSettings,
-    refreshToken,
-    verifyToken,
+    clearError,
   };
-}
 
-// Hook for checking if user is authenticated
-export function useIsAuthenticated(): boolean {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated;
-}
-
-// Hook for getting current user
-export function useCurrentUser(): User | null {
-  const { user } = useAuth();
-  return user;
-}
-
-// Hook for checking user roles
-export function useUserRole(): {
-  hasRole: (role: User['role']) => boolean;
-  hasAnyRole: (roles: User['role'][]) => boolean;
-  canAccess: (feature: string) => boolean;
-} {
-  const { hasRole, hasAnyRole, canAccess } = useAuth();
-  return { hasRole, hasAnyRole, canAccess };
-}
-
-// Hook for user settings
-export function useUserSettings(): {
-  settings: UserSettings;
-  updateSettings: (settings: Partial<UserSettings>) => Promise<{ success: boolean; error?: string }>;
-} {
-  const { getUserSettings, updateSettings } = useAuth();
-  return {
-    settings: getUserSettings(),
-    updateSettings,
-  };
-}
-
-// Export types
-export type { AuthState, UseAuthReturn };
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+};

@@ -287,13 +287,13 @@ export function ScriptExecutor({ selectedConnection, onConnectionSelect }: Scrip
                 <button
                   onClick={executeScript}
                   disabled={!selectedConnection || isExecuting}
-                  className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                  className="btn btn-success"
                 >
                   {isExecuting ? 'Executing...' : 'Execute Script'}
                 </button>
                 <button
                   onClick={resetForm}
-                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                  className="btn btn-secondary"
                 >
                   Reset
                 </button>

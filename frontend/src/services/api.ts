@@ -1,321 +1,315 @@
-import { toast } from 'react-hot-toast';
+import axios from 'axios';
 
-// API Configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
-// Types
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
-}
+// Create axios instance with default config
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
-export interface ApiError {
-  message: string;
-  status: number;
-  code?: string;
-}
-
-// API Client Class
-class ApiClient {
-  private baseURL: string;
-  private defaultHeaders: HeadersInit;
-
-  constructor(baseURL: string) {
-    this.baseURL = baseURL;
-    this.defaultHeaders = {
-      'Content-Type': 'application/json',
-    };
-  }
-
-  // Get authentication token
-  private getAuthToken(): string | null {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('authToken');
+// Request interceptor to add auth token
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
-    return null;
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
+);
 
-  // Add authentication header
-  private getHeaders(): HeadersInit {
-    const token = this.getAuthToken();
-    return {
-      ...this.defaultHeaders,
-      ...(token && { Authorization: `Bearer ${token}` }),
-    };
-  }
-
-  // Handle API errors
-  private handleError(err: unknown): ApiError {
-    const error = err as any;
-    if (error?.response) {
-      // Server responded with error status
-      const status = error.response.status;
-      const data = error.response.data;
-      
-      switch (status) {
-        case 401:
-          // Unauthorized - redirect to login
-          this.handleUnauthorized();
-          return { message: 'Authentication required', status };
-        case 403:
-          return { message: 'Access denied', status };
-        case 404:
-          return { message: 'Resource not found', status };
-        case 422:
-          return { message: data?.message || 'Validation error', status };
-        case 429:
-          return { message: 'Too many requests. Please try again later.', status };
-        case 500:
-          return { message: 'Internal server error', status };
-        default:
-          return { message: data?.message || 'An error occurred', status };
-      }
-    } else if (error?.request) {
-      // Network error
-      return { message: 'Network error. Please check your connection.', status: 0 };
-    } else {
-      const msg = (error && error.message) ? error.message : 'An unexpected error occurred';
-      return { message: msg, status: 0 };
-    }
-  }
-
-  // Handle unauthorized access
-  private handleUnauthorized(): void {
-    if (typeof window !== 'undefined') {
+// Response interceptor to handle auth errors
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
       localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
       window.location.href = '/login';
     }
+    return Promise.reject(error);
   }
+);
 
-  // Retry mechanism for failed requests
-  private async retryRequest<T>(
-    requestFn: () => Promise<T>,
-    maxRetries: number = 3,
-    delay: number = 1000
-  ): Promise<T> {
-    let lastError: any;
+// Auth API
+export const authAPI = {
+  login: (credentials: { email: string; password: string }) =>
+    apiClient.post('/auth/login', credentials),
+  
+  register: (userData: { email: string; password: string; name: string }) =>
+    apiClient.post('/auth/register', userData),
+  
+  refreshToken: (refreshToken: string) =>
+    apiClient.post('/auth/refresh', { refreshToken }),
+  
+  logout: () => apiClient.post('/auth/logout'),
+  
+  getProfile: () => apiClient.get('/auth/profile'),
+};
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        return await requestFn();
-      } catch (error) {
-        lastError = error;
-        
-        // Don't retry on client errors (4xx)
-        const resp = (error as any)?.response;
-        if (resp && resp.status >= 400 && resp.status < 500) {
-          throw error;
-        }
+// Users API
+export const usersAPI = {
+  getProfile: () => apiClient.get('/users/profile'),
+  
+  updateProfile: (data: any) => apiClient.put('/users/profile', data),
+  
+  getUsers: (params?: { page?: number; limit?: number; search?: string }) =>
+    apiClient.get('/users', { params }),
+  
+  getUserById: (id: string) => apiClient.get(`/users/${id}`),
+  
+  updateUser: (id: string, data: any) => apiClient.put(`/users/${id}`, data),
+  
+  deleteUser: (id: string) => apiClient.delete(`/users/${id}`),
+};
 
-        if (attempt < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, delay * attempt));
-        }
-      }
-    }
+// Conversations API
+export const conversationsAPI = {
+  getConversations: (params?: { 
+    page?: number; 
+    limit?: number; 
+    status?: string; 
+    sortBy?: string; 
+    sortOrder?: string 
+  }) => apiClient.get('/conversations', { params }),
+  
+  getConversation: (id: string) => apiClient.get(`/conversations/${id}`),
+  
+  createConversation: (data: { customerName?: string; customerPhone?: string }) =>
+    apiClient.post('/conversations', data),
+  
+  updateConversation: (id: string, data: any) =>
+    apiClient.put(`/conversations/${id}`, data),
+  
+  endConversation: (id: string) => apiClient.post(`/conversations/${id}/end`),
+  
+  getAnalytics: (params?: { startDate?: string; endDate?: string }) =>
+    apiClient.get('/conversations/analytics/summary', { params }),
+};
 
-    throw lastError;
-  }
+// Content API
+export const contentAPI = {
+  getTemplates: () => apiClient.get('/content/templates'),
+  
+  generateContent: (data: {
+    templateId: string;
+    formData: Record<string, any>;
+    instructions?: string;
+  }) => apiClient.post('/content/generate', data),
+  
+  saveContent: (data: {
+    templateId: string;
+    generatedContent: any;
+    formData: Record<string, any>;
+  }) => apiClient.post('/content/save', data),
+  
+  getContentHistory: (params?: { page?: number; limit?: number }) =>
+    apiClient.get('/content/history', { params }),
+  
+  publishToSocial: (data: {
+    contentId: string;
+    platforms: string[];
+    scheduledTime?: string;
+  }) => apiClient.post('/content/publish', data),
+};
 
-  // Generic request method
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {},
-    retry: boolean = true
-  ): Promise<ApiResponse<T>> {
-    const url = `${this.baseURL}${endpoint}`;
-    const config: RequestInit = {
-      ...options,
-      headers: {
-        ...this.getHeaders(),
-        ...options.headers,
-      },
-    };
-
-    try {
-      const requestFn = async () => {
-        const response = await fetch(url, config);
-        
-        if (!response.ok) {
-          const error = new Error('HTTP Error');
-          (error as any).response = {
-            status: response.status,
-            data: await response.json().catch(() => ({})),
-          };
-          throw error;
-        }
-
-        const data = await response.json();
-        return data;
-      };
-
-      const data = retry ? await this.retryRequest(requestFn) : await requestFn();
-      
-      return {
-        success: true,
-        data,
-      };
-    } catch (error) {
-      const apiError = this.handleError(error);
-      
-      // Show error toast for user-facing errors
-      if (apiError.status >= 400 && apiError.status < 500) {
-        toast.error(apiError.message);
-      }
-
-      return {
-        success: false,
-        error: apiError.message,
-      };
-    }
-  }
-
-  // HTTP Methods
-  async get<T>(endpoint: string, retry: boolean = true): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'GET' }, retry);
-  }
-
-  async post<T>(endpoint: string, data?: any, retry: boolean = true): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, {
-      method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
-    }, retry);
-  }
-
-  async put<T>(endpoint: string, data?: any, retry: boolean = true): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, {
-      method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined,
-    }, retry);
-  }
-
-  async patch<T>(endpoint: string, data?: any, retry: boolean = true): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, {
-      method: 'PATCH',
-      body: data ? JSON.stringify(data) : undefined,
-    }, retry);
-  }
-
-  async delete<T>(endpoint: string, retry: boolean = true): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' }, retry);
-  }
-
-  // File upload method
-  async upload<T>(endpoint: string, file: File, onProgress?: (progress: number) => void): Promise<ApiResponse<T>> {
+// Uploads API
+export const uploadsAPI = {
+  uploadImage: (file: File, onProgress?: (progress: number) => void) => {
     const formData = new FormData();
-    // Backend expects field name 'image'
     formData.append('image', file);
-
-    const url = `${this.baseURL}${endpoint}`;
-    const token = this.getAuthToken();
-
-    try {
-      const xhr = new XMLHttpRequest();
-      
-      return new Promise((resolve, reject) => {
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable && onProgress) {
-            const progress = (event.loaded / event.total) * 100;
-            onProgress(progress);
-          }
-        });
-
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const data = JSON.parse(xhr.responseText) as T;
-              resolve({ success: true, data: data as any });
-            } catch {
-              resolve({ success: true, data: xhr.responseText as any });
-            }
-          } else {
-            const error = this.handleError({ response: { status: xhr.status, data: xhr.responseText } });
-            resolve({ success: false, error: error.message });
-          }
-        });
-
-        xhr.addEventListener('error', () => {
-          const error = this.handleError({ request: true });
-          resolve({ success: false, error: error.message });
-        });
-
-        xhr.open('POST', url, true);
-        if (token) {
-          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    
+    return apiClient.post('/uploads/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(progress);
         }
-        xhr.send(formData);
-      });
-    } catch (error) {
-      const apiError = this.handleError(error);
-      return { success: false, error: apiError.message };
-    }
-  }
-}
+      },
+    });
+  },
+  
+  uploadMultipleImages: (files: File[], onProgress?: (progress: number) => void) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('images', file));
+    
+    return apiClient.post('/uploads/images', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(progress);
+        }
+      },
+    });
+  },
+  
+  getUploads: (params?: { page?: number; limit?: number; type?: string }) =>
+    apiClient.get('/uploads', { params }),
+  
+  deleteUpload: (id: string) => apiClient.delete(`/uploads/${id}`),
+};
 
-// Create API client instance
-export const apiClient = new ApiClient(API_BASE_URL);
+// Remote Execution API
+export const remoteExecutionAPI = {
+  getConnections: () => apiClient.get('/remote-execution/connections'),
+  
+  createConnection: (data: {
+    name: string;
+    host: string;
+    port: number;
+    username: string;
+    privateKey?: string;
+    password?: string;
+  }) => apiClient.post('/remote-execution/connections', data),
+  
+  updateConnection: (id: string, data: any) =>
+    apiClient.put(`/remote-execution/connections/${id}`, data),
+  
+  deleteConnection: (id: string) => apiClient.delete(`/remote-execution/connections/${id}`),
+  
+  testConnection: (id: string) => apiClient.post(`/remote-execution/connections/${id}/test`),
+  
+  executeScript: (data: {
+    connectionId: string;
+    scriptPath: string;
+    parameters?: Record<string, any>;
+  }) => apiClient.post('/remote-execution/execute', data),
+  
+  getExecutions: (params?: { 
+    page?: number; 
+    limit?: number; 
+    status?: string; 
+    connectionId?: string 
+  }) => apiClient.get('/remote-execution/executions', { params }),
+  
+  getExecution: (id: string) => apiClient.get(`/remote-execution/executions/${id}`),
+  
+  cancelExecution: (id: string) => apiClient.post(`/remote-execution/executions/${id}/cancel`),
+  
+  // Background removal specific
+  removeBackground: (data: {
+    connectionId: string;
+    imagePath: string;
+    model?: string;
+    batchMode?: boolean;
+  }) => apiClient.post('/remote-execution/background-removal', data),
+  
+  getBackgroundRemovalJobs: (params?: { 
+    page?: number; 
+    limit?: number; 
+    status?: string 
+  }) => apiClient.get('/remote-execution/background-removal', { params }),
+  
+  downloadResult: (jobId: string) => apiClient.get(`/remote-execution/background-removal/${jobId}/download`),
+};
 
-// API Endpoints
-export const API_ENDPOINTS = {
-  // Authentication
-  AUTH: {
-    LOGIN: '/auth/login',
-    REGISTER: '/auth/register',
-    LOGOUT: '/auth/logout',
-    REFRESH: '/auth/refresh',
-    VERIFY: '/auth/me',
-    ME: '/auth/me',
+// File Transfer API
+export const fileTransferAPI = {
+  uploadFile: (connectionId: string, file: File, remotePath: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('remotePath', remotePath);
+    
+    return apiClient.post(`/remote-execution/connections/${connectionId}/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
   },
   
-  // Users
-  USERS: {
-    PROFILE: '/users/profile',
-    UPDATE: '/users/profile',
-    SETTINGS: '/users/settings',
-  },
+  downloadFile: (connectionId: string, remotePath: string) =>
+    apiClient.get(`/remote-execution/connections/${connectionId}/download`, {
+      params: { remotePath },
+      responseType: 'blob',
+    }),
   
-  // Conversations
-  CONVERSATIONS: {
-    LIST: '/conversations',
-    CREATE: '/conversations',
-    GET: (id: string) => `/conversations/${id}`,
-    UPDATE: (id: string) => `/conversations/${id}`,
-    DELETE: (id: string) => `/conversations/${id}`,
-    ANALYZE: (id: string) => `/conversations/${id}/analyze`,
-  },
+  listFiles: (connectionId: string, path: string) =>
+    apiClient.get(`/remote-execution/connections/${connectionId}/files`, {
+      params: { path },
+    }),
   
-  // Content
-  CONTENT: {
-    TEMPLATES: '/content/templates',
-    GENERATE: '/content/generate',
-    PREVIEW: '/content/preview',
-    PUBLISH: '/content/publish',
-    UPLOAD: '/content/upload',
-  },
-  
-  // Remote Execution
-  REMOTE: {
-    CONNECTIONS: '/remote/connections',
-    EXECUTE: '/remote/execute',
-    STATUS: '/remote/status',
-    BACKGROUND_REMOVAL: '/remote/background-removal',
-  },
-  
-  // Uploads
-  UPLOADS: {
-    UPLOAD: '/uploads',
-    DELETE: (id: string) => `/uploads/${id}`,
-  },
-  
-  // Analytics
-  ANALYTICS: {
-    DASHBOARD: '/analytics/dashboard',
-    PERFORMANCE: '/analytics/performance',
-    USAGE: '/analytics/usage',
-  },
-} as const;
+  deleteFile: (connectionId: string, remotePath: string) =>
+    apiClient.delete(`/remote-execution/connections/${connectionId}/files`, {
+      params: { remotePath },
+    }),
+};
 
-// Export types for use in components
-// types exported above
+// Quality Assessment API
+export const qualityAssessmentAPI = {
+  assessQuality: (data: {
+    imagePath: string;
+    originalPath: string;
+    jobId: string;
+  }) => apiClient.post('/quality-assessment/assess', data),
+  
+  getAssessments: (params?: { 
+    page?: number; 
+    limit?: number; 
+    status?: string 
+  }) => apiClient.get('/quality-assessment', { params }),
+  
+  getAssessment: (id: string) => apiClient.get(`/quality-assessment/${id}`),
+  
+  reviewAssessment: (id: string, data: {
+    approved: boolean;
+    notes?: string;
+    qualityScore?: number;
+  }) => apiClient.post(`/quality-assessment/${id}/review`, data),
+};
+
+// Social Media API
+export const socialMediaAPI = {
+  getAccounts: () => apiClient.get('/social-media/accounts'),
+  
+  connectAccount: (platform: string, authData: any) =>
+    apiClient.post('/social-media/accounts/connect', { platform, authData }),
+  
+  disconnectAccount: (accountId: string) =>
+    apiClient.delete(`/social-media/accounts/${accountId}`),
+  
+  publishPost: (data: {
+    content: string;
+    images?: string[];
+    platforms: string[];
+    scheduledTime?: string;
+  }) => apiClient.post('/social-media/publish', data),
+  
+  getPublishedPosts: (params?: { 
+    page?: number; 
+    limit?: number; 
+    platform?: string 
+  }) => apiClient.get('/social-media/posts', { params }),
+};
+
+// Analytics API
+export const analyticsAPI = {
+  getSalesMetrics: (params?: { startDate?: string; endDate?: string }) =>
+    apiClient.get('/analytics/sales', { params }),
+  
+  getTrainingMetrics: (params?: { startDate?: string; endDate?: string }) =>
+    apiClient.get('/analytics/training', { params }),
+  
+  getContentMetrics: (params?: { startDate?: string; endDate?: string }) =>
+    apiClient.get('/analytics/content', { params }),
+  
+  getSystemMetrics: () => apiClient.get('/analytics/system'),
+};
+
+// Health check
+export const healthAPI = {
+  check: () => apiClient.get('/health'),
+};
+
+export default apiClient;

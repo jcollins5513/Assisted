@@ -286,7 +286,7 @@ export function FileTransfer({ connectionId, onTransferComplete }: FileTransferP
             </div>
             <button
               onClick={() => document.getElementById('file-input')?.click()}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+              className="btn btn-primary"
             >
               Select Files
             </button>
