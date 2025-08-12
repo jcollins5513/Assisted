@@ -1,0 +1,254 @@
+[
+  {
+    "id": "z2tm1ddyd",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\processed.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\original.jpg",
+    "score": 86,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 94,
+      "backgroundRemoval": 87,
+      "colorPreservation": 93,
+      "noiseLevel": 20,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:09:06.208Z",
+    "completedAt": "2025-08-09T23:09:06.209Z"
+  },
+  {
+    "id": "7se0zu193",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\processed.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\original.jpg",
+    "score": 81,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 78,
+      "backgroundRemoval": 85,
+      "colorPreservation": 89,
+      "noiseLevel": 20,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:10:15.882Z",
+    "completedAt": "2025-08-09T23:10:15.883Z"
+  },
+  {
+    "id": "03fu3e480",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\processed.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\original.jpg",
+    "score": 83,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 82,
+      "backgroundRemoval": 80,
+      "colorPreservation": 87,
+      "noiseLevel": 8,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:11:05.381Z",
+    "completedAt": "2025-08-09T23:11:05.381Z"
+  },
+  {
+    "id": "hr2qpg9vu",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\processed.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\original.jpg",
+    "score": 82,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 79,
+      "backgroundRemoval": 83,
+      "colorPreservation": 90,
+      "noiseLevel": 13,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:11:33.726Z",
+    "completedAt": "2025-08-09T23:11:33.726Z"
+  },
+  {
+    "id": "yz3buzz0q",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\p1.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\o1.jpg",
+    "score": 90,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 87,
+      "backgroundRemoval": 94,
+      "colorPreservation": 92,
+      "noiseLevel": 9,
+      "overallQuality": 0
+    },
+    "suggestions": [
+      {
+        "type": "improvement",
+        "category": "general",
+        "message": "Excellent quality score (90%). This image meets high-quality standards.",
+        "priority": "low",
+        "actionable": false
+      }
+    ],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:11:33.949Z",
+    "completedAt": "2025-08-09T23:11:33.950Z"
+  },
+  {
+    "id": "7r9jyy21a",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\p2.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\o2.jpg",
+    "score": 89,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 90,
+      "backgroundRemoval": 90,
+      "colorPreservation": 85,
+      "noiseLevel": 5,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:11:33.950Z",
+    "completedAt": "2025-08-09T23:11:33.951Z"
+  },
+  {
+    "id": "firxgr9a7",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\p3.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\o3.jpg",
+    "score": 87,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 79,
+      "backgroundRemoval": 91,
+      "colorPreservation": 88,
+      "noiseLevel": 6,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:11:33.950Z",
+    "completedAt": "2025-08-09T23:11:33.951Z"
+  },
+  {
+    "id": "5phsnkgo1",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\x1.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\y1.jpg",
+    "score": 90,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 77,
+      "backgroundRemoval": 81,
+      "colorPreservation": 88,
+      "noiseLevel": 9,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": true,
+    "reviewNotes": "Looks good",
+    "createdAt": "2025-08-09T23:11:34.384Z",
+    "completedAt": "2025-08-09T23:11:34.385Z"
+  },
+  {
+    "id": "h0u6u36vs",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\processed.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\original.jpg",
+    "score": 83,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 76,
+      "backgroundRemoval": 95,
+      "colorPreservation": 87,
+      "noiseLevel": 20,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:12:27.101Z",
+    "completedAt": "2025-08-09T23:12:27.101Z"
+  },
+  {
+    "id": "t4qldgdmp",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\p1.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\o1.jpg",
+    "score": 81,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 75,
+      "backgroundRemoval": 85,
+      "colorPreservation": 87,
+      "noiseLevel": 14,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:12:27.321Z",
+    "completedAt": "2025-08-09T23:12:27.322Z"
+  },
+  {
+    "id": "gug8mu9m8",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\p2.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\o2.jpg",
+    "score": 91,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 92,
+      "backgroundRemoval": 94,
+      "colorPreservation": 94,
+      "noiseLevel": 10,
+      "overallQuality": 0
+    },
+    "suggestions": [
+      {
+        "type": "improvement",
+        "category": "general",
+        "message": "Excellent quality score (91%). This image meets high-quality standards.",
+        "priority": "low",
+        "actionable": false
+      }
+    ],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:12:27.321Z",
+    "completedAt": "2025-08-09T23:12:27.322Z"
+  },
+  {
+    "id": "dirnhcsy9",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\p3.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\o3.jpg",
+    "score": 84,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 93,
+      "backgroundRemoval": 87,
+      "colorPreservation": 86,
+      "noiseLevel": 20,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": false,
+    "createdAt": "2025-08-09T23:12:27.321Z",
+    "completedAt": "2025-08-09T23:12:27.322Z"
+  },
+  {
+    "id": "nsonby131",
+    "imagePath": "D:\\Assisted-1\\backend\\tests\\fixtures\\x1.png",
+    "originalPath": "D:\\Assisted-1\\backend\\tests\\fixtures\\y1.jpg",
+    "score": 90,
+    "status": "completed",
+    "metrics": {
+      "edgeSharpness": 88,
+      "backgroundRemoval": 84,
+      "colorPreservation": 87,
+      "noiseLevel": 15,
+      "overallQuality": 0
+    },
+    "suggestions": [],
+    "reviewed": true,
+    "createdAt": "2025-08-09T23:12:27.755Z",
+    "completedAt": "2025-08-09T23:12:27.756Z",
+    "reviewNotes": "Looks good"
+  }
+]

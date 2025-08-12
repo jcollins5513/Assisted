@@ -3,6 +3,10 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import { conversationAnalysisService } from './services/conversationAnalysisService';
+import { WhisperCppStreamer } from './services/realtimeSttWhisper';
+import { conversationStore } from './services/conversationStore';
 import mongoose from 'mongoose';
 import path from 'path';
 
@@ -13,6 +17,7 @@ import conversationRoutes from './routes/conversations';
 import contentRoutes from './routes/content';
 import uploadRoutes from './routes/uploads';
 import remoteExecutionRoutes from './routes/remote-execution';
+import qualityRoutes from './routes/quality';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -81,6 +86,7 @@ app.use('/api/conversations', authMiddleware, conversationRoutes);
 app.use('/api/content', authMiddleware, contentRoutes);
 app.use('/api/uploads', authMiddleware, uploadRoutes);
 app.use('/api/remote-execution', authMiddleware, remoteExecutionRoutes);
+app.use('/api/quality', authMiddleware, qualityRoutes);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -92,29 +98,63 @@ app.get('/api/health', (_req, res) => {
 });
 
 // Socket.io connection handling
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth?.['token'] as string | undefined;
+    if (!token) return next(new Error('unauthorized'));
+    const secret = process.env['JWT_SECRET'];
+    if (!secret) return next(new Error('server-misconfigured'));
+    const decoded = jwt.verify(token, secret) as any;
+    (socket as any).userId = decoded.userId;
+    return next();
+  } catch {
+    return next(new Error('unauthorized'));
+  }
+});
+
 io.on('connection', (socket) => {
-  console.log('🔌 User connected:', socket.id);
+  const userId = (socket as any).userId as string | undefined;
+  if (userId) socket.join(`user-${userId}`);
 
-  // Join user to their room for real-time updates
-  socket.on('join-room', (userId: string) => {
-    socket.join(`user-${userId}`);
-    console.log(`👤 User ${userId} joined room`);
+  // Lazy init per-connection whisper streamer
+  let whisper: WhisperCppStreamer | null = null;
+  const ensureWhisper = () => {
+    if (whisper) return whisper;
+    const exe = process.env['WHISPER_CPP_EXE'] || 'whisper-main.exe';
+    const model = process.env['WHISPER_CPP_MODEL'] || 'models/ggml-base.en.bin';
+    whisper = new WhisperCppStreamer({ whisperExePath: exe, modelPath: model, language: 'en' });
+    whisper.setHandlers((partial) => {
+      const result = conversationAnalysisService.analyzeConversation(partial);
+      if (userId) io.to(`user-${userId}`).emit('conversation-analysis', result);
+    }, (finalText) => {
+      const result = conversationAnalysisService.analyzeConversation(finalText);
+      if (userId) {
+        io.to(`user-${userId}`).emit('conversation-analysis', result);
+        io.to(`user-${userId}`).emit('real-time-feedback', result.realTimeFeedback);
+      }
+    });
+    whisper.start();
+    return whisper;
+  };
+
+  socket.on('voice-data', (chunk: { data: ArrayBuffer; timestamp: number; sequence: number; sampleRate?: number }) => {
+    const w = ensureWhisper();
+    try {
+      w.feedPcm(chunk);
+      if (userId) conversationStore.append({ type: 'transcript', userId, timestamp: chunk.timestamp, data: { seq: chunk.sequence } });
+    } catch {}
   });
 
-  // Handle voice recording events
-  socket.on('voice-data', (data) => {
-    // Process voice data for real-time analysis
-    console.log('🎤 Voice data received:', data.length, 'bytes');
-  });
-
-  // Handle conversation analysis
-  socket.on('conversation-update', (data) => {
-    // Broadcast to relevant users
-    socket.broadcast.to(`user-${data.userId}`).emit('conversation-analysis', data);
+  socket.on('conversation-event', (evt) => {
+    try {
+      if (userId) conversationStore.append({ type: 'start', userId, timestamp: Date.now(), data: evt });
+    } catch {}
   });
 
   socket.on('disconnect', () => {
-    console.log('🔌 User disconnected:', socket.id);
+    if (whisper) whisper.stop();
+    whisper = null;
+    if (userId) conversationStore.append({ type: 'end', userId, timestamp: Date.now(), data: {} });
   });
 });
 
@@ -132,6 +172,24 @@ app.use('*', (req, res) => {
 // Start server
 const startServer = async () => {
   await connectDB();
+  // Whisper startup validation (non-fatal): log if misconfigured
+  try {
+    const exe = process.env['WHISPER_CPP_EXE'];
+    const model = process.env['WHISPER_CPP_MODEL'];
+    if (exe && model) {
+      const { WhisperCppStreamer } = await import('./services/realtimeSttWhisper');
+      const check = (WhisperCppStreamer as any).validateConfig({ whisperExePath: exe, modelPath: model });
+      if (!check.ok) {
+        console.warn(`Whisper.cpp validation: ${check.message}`);
+      } else {
+        console.log('✅ Whisper.cpp configuration looks valid');
+      }
+    } else {
+      console.warn('Whisper.cpp not configured. Set WHISPER_CPP_EXE and WHISPER_CPP_MODEL to enable streaming STT');
+    }
+  } catch (err) {
+    console.warn('Whisper.cpp validation failed:', err);
+  }
   
   server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
@@ -140,6 +198,8 @@ const startServer = async () => {
   });
 };
 
-startServer().catch(console.error);
+if (process.env['NODE_ENV'] !== 'test') {
+  startServer().catch(console.error);
+}
 
 export { app, io };

@@ -35,11 +35,10 @@ export class AudioStreamService {
   // Connect to WebSocket server
   async connect(serverUrl: string, userId: string): Promise<void> {
     try {
+      const token = localStorage.getItem('authToken') || undefined;
       this.socket = io(serverUrl, {
         transports: ['websocket'],
-        auth: {
-          userId,
-        },
+        auth: { token, userId },
       });
 
       this.socket.on('connect', () => {
@@ -174,6 +173,8 @@ export class AudioStreamService {
         data: int16Data.buffer,
         timestamp: Date.now(),
         sequence: this.sequenceNumber++,
+        // @ts-ignore - extend payload for server
+       	sampleRate: this.config.sampleRate,
       };
 
       // Send via WebSocket

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { qualityAssessmentAPI } from '@/services/api';
 
 interface QualityReviewProps {
   assessmentId?: string;
@@ -11,6 +12,8 @@ interface QualityAssessment {
   id: string;
   imagePath: string;
   originalPath: string;
+  imageUrl?: string;
+  originalUrl?: string;
   score: number;
   status: 'pending' | 'analyzing' | 'completed' | 'failed';
   metrics: QualityMetrics;
@@ -57,108 +60,30 @@ export function QualityReview({ assessmentId, onReviewComplete }: QualityReviewP
   });
 
   useEffect(() => {
-    // Load sample assessments
-    loadSampleAssessments();
+    void refreshAssessments();
+    const interval = setInterval(() => {
+      void refreshAssessments();
+    }, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     updateAssessmentStats();
   }, [assessments]);
 
-  const loadSampleAssessments = () => {
-    const sampleAssessments: QualityAssessment[] = [
-      {
-        id: 'assessment-1',
-        imagePath: '/processed/car-1.png',
-        originalPath: '/uploads/car-1.jpg',
-        score: 85,
-        status: 'completed',
-        metrics: {
-          edgeSharpness: 88,
-          backgroundRemoval: 92,
-          colorPreservation: 87,
-          noiseLevel: 8,
-          overallQuality: 85
-        },
-        suggestions: [
-          {
-            type: 'improvement',
-            category: 'edge',
-            message: 'Edge sharpness is good but could be improved with higher quality settings.',
-            priority: 'low',
-            actionable: true,
-            action: 'Try U²-Net model with higher quality settings'
-          }
-        ],
-        reviewed: false,
-        createdAt: new Date(Date.now() - 3600000),
-        completedAt: new Date(Date.now() - 3500000)
-      },
-      {
-        id: 'assessment-2',
-        imagePath: '/processed/car-2.png',
-        originalPath: '/uploads/car-2.jpg',
-        score: 72,
-        status: 'completed',
-        metrics: {
-          edgeSharpness: 65,
-          backgroundRemoval: 78,
-          colorPreservation: 85,
-          noiseLevel: 15,
-          overallQuality: 72
-        },
-        suggestions: [
-          {
-            type: 'improvement',
-            category: 'edge',
-            message: 'Edge sharpness is below threshold (65% vs 75%). Consider using a higher quality model.',
-            priority: 'medium',
-            actionable: true,
-            action: 'Try U²-Net model with higher quality settings'
-          },
-          {
-            type: 'warning',
-            category: 'noise',
-            message: 'Noise level is above threshold (15% vs 20%). Consider using noise reduction.',
-            priority: 'medium',
-            actionable: true,
-            action: 'Enable noise reduction in processing settings'
-          }
-        ],
-        reviewed: false,
-        createdAt: new Date(Date.now() - 7200000),
-        completedAt: new Date(Date.now() - 7100000)
-      },
-      {
-        id: 'assessment-3',
-        imagePath: '/processed/car-3.png',
-        originalPath: '/uploads/car-3.jpg',
-        score: 95,
-        status: 'completed',
-        metrics: {
-          edgeSharpness: 94,
-          backgroundRemoval: 96,
-          colorPreservation: 93,
-          noiseLevel: 3,
-          overallQuality: 95
-        },
-        suggestions: [
-          {
-            type: 'improvement',
-            category: 'general',
-            message: 'Excellent quality score (95%). This image meets high-quality standards.',
-            priority: 'low',
-            actionable: false
-          }
-        ],
-        reviewed: true,
-        reviewNotes: 'Auto-approved: Excellent quality score',
-        createdAt: new Date(Date.now() - 10800000),
-        completedAt: new Date(Date.now() - 10700000)
-      }
-    ];
-
-    setAssessments(sampleAssessments);
+  const refreshAssessments = async () => {
+    try {
+      const res = await qualityAssessmentAPI.getAssessments();
+      const list = (res.data?.data || res.data) as any[];
+      const parsed: QualityAssessment[] = (list || []).map((a: any) => ({
+        ...a,
+        createdAt: a.createdAt ? new Date(a.createdAt) : new Date(),
+        completedAt: a.completedAt ? new Date(a.completedAt) : undefined,
+      }));
+      setAssessments(parsed);
+    } catch (e) {
+      // ignore polling errors
+    }
   };
 
   const updateAssessmentStats = () => {
@@ -185,26 +110,23 @@ export function QualityReview({ assessmentId, onReviewComplete }: QualityReviewP
     });
   };
 
-  const handleReviewSubmit = () => {
+  const handleReviewSubmit = async () => {
     if (!selectedAssessment) return;
-
-    const updatedAssessment = {
-      ...selectedAssessment,
-      reviewed: true,
-      reviewNotes: reviewData.notes,
-      score: reviewData.qualityScore
-    };
-
-    setAssessments(prev => 
-      prev.map(a => a.id === selectedAssessment.id ? updatedAssessment : a)
-    );
-
-    if (onReviewComplete) {
-      onReviewComplete(selectedAssessment.id, reviewData.approved);
+    try {
+      await qualityAssessmentAPI.reviewAssessment(selectedAssessment.id, {
+        approved: reviewData.approved,
+        notes: reviewData.notes,
+        qualityScore: reviewData.qualityScore,
+      });
+      await refreshAssessments();
+      if (onReviewComplete) {
+        onReviewComplete(selectedAssessment.id, reviewData.approved);
+      }
+      setSelectedAssessment(null);
+      setReviewData({ approved: false, notes: '', qualityScore: 0 });
+    } catch (e) {
+      // no-op for now
     }
-
-    setSelectedAssessment(null);
-    setReviewData({ approved: false, notes: '', qualityScore: 0 });
   };
 
   const getScoreColor = (score: number) => {
@@ -344,6 +266,30 @@ export function QualityReview({ assessmentId, onReviewComplete }: QualityReviewP
               <h3 className="text-lg font-medium text-gray-900">Assessment Details</h3>
             </div>
             <div className="p-6 space-y-6">
+              {/* Before/After */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-900 mb-2">Before / After</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gray-50 rounded p-2 text-center">
+                    <div className="text-xs text-gray-600 mb-1">Original</div>
+                    {selectedAssessment.originalUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={selectedAssessment.originalUrl} alt="original" className="max-h-64 mx-auto rounded" />
+                    ) : (
+                      <div className="text-xs text-gray-400">No preview</div>
+                    )}
+                  </div>
+                  <div className="bg-gray-50 rounded p-2 text-center">
+                    <div className="text-xs text-gray-600 mb-1">Processed</div>
+                    {selectedAssessment.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={selectedAssessment.imageUrl} alt="processed" className="max-h-64 mx-auto rounded" />
+                    ) : (
+                      <div className="text-xs text-gray-400">No preview</div>
+                    )}
+                  </div>
+                </div>
+              </div>
               {/* Image Info */}
               <div>
                 <h4 className="text-sm font-medium text-gray-900 mb-2">Image Information</h4>

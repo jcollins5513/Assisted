@@ -1,6 +1,7 @@
 import express from 'express';
 import { Conversation } from '../models/Conversation';
 import { createError } from '../middleware/errorHandler';
+import { conversationStore } from '../services/conversationStore';
 
 const router = express.Router();
 
@@ -171,3 +172,14 @@ router.get('/analytics/summary', async (req, res, next) => {
 });
 
 export default router;
+// Recent events for current user
+router.get('/events/recent', async (req, res) => {
+  try {
+    const userId = req.user?._id?.toString();
+    if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    const events = conversationStore.listByUser(userId, 200);
+    res.json({ success: true, data: events });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Failed to load events' });
+  }
+});

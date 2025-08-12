@@ -87,14 +87,18 @@ Assisted-1/
     │   │   ├── 📄 users.ts
     │   │   ├── 📄 conversations.ts
     │   │   ├── 📄 content.ts
-    │   │   ├── 📄 uploads.ts
-    │   │   └── 📄 remote-execution.ts
+     │   │   ├── 📄 uploads.ts
+     │   │   ├── 📄 remote-execution.ts
+     │   │   └── 📄 quality.ts            # NEW: Quality assessment routes
     │   ├── 📁 middleware/               # Express middleware
     │   │   ├── 📄 auth.ts
     │   │   └── 📄 errorHandler.ts
     │   ├── 📁 services/                 # Business logic services
     │   │   ├── 📄 remoteExecutionService.ts
     │   │   ├── 📄 apiService.ts         # Main API service layer
+     │   │   ├── 📄 conversationAnalysisService.ts # Server-side analysis
+     │   │   ├── 📄 realtimeSttWhisper.ts # Whisper.cpp streaming bridge
+     │   │   ├── 📄 conversationStore.ts  # Persist transcripts/analysis
     │   │   ├── 📄 authService.ts        # Authentication service
     │   │   ├── 📄 fileTransferService.ts      # NEW: File transfer service
     │   │   └── 📄 qualityAssessmentService.ts # NEW: Quality assessment service
@@ -147,6 +151,10 @@ Assisted-1/
 - `frontend/src/components/remote/FileTransfer.tsx` - File transfer UI
 - `frontend/src/components/remote/QualityReview.tsx` - Quality review UI
 - `frontend/src/components/remote/ErrorMonitor.tsx` - Error monitoring UI
+- `backend/src/routes/quality.ts` - Quality assessment REST API routes
+- `backend/src/services/realtimeSttWhisper.ts` - Whisper.cpp integration for streaming STT
+- `backend/src/services/conversationStore.ts` - JSON-backed conversation event store
+- `backend/src/services/conversationAnalysisService.ts` - Server-side analysis
 
 ---
 

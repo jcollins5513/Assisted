@@ -5,17 +5,19 @@ import { ConnectionManager } from '@/components/remote/ConnectionManager';
 import { ScriptExecutor } from '@/components/remote/ScriptExecutor';
 import { ExecutionMonitor } from '@/components/remote/ExecutionMonitor';
 import { BackgroundRemoval } from '@/components/remote/BackgroundRemoval';
+import { QualityReview } from '@/components/remote/QualityReview';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 
 export default function RemoteExecutionPage() {
-  const [activeTab, setActiveTab] = useState<'connections' | 'scripts' | 'monitor' | 'background-removal'>('connections');
+  const [activeTab, setActiveTab] = useState<'connections' | 'scripts' | 'monitor' | 'background-removal' | 'quality-review'>('connections');
   const [selectedConnection, setSelectedConnection] = useState<string | null>(null);
 
   const tabs = [
     { id: 'connections', label: 'Connections', icon: '🔗' },
     { id: 'scripts', label: 'Script Execution', icon: '⚡' },
     { id: 'monitor', label: 'Execution Monitor', icon: '📊' },
-    { id: 'background-removal', label: 'Background Removal', icon: '🎨' }
+    { id: 'background-removal', label: 'Background Removal', icon: '🎨' },
+    { id: 'quality-review', label: 'Quality Review', icon: '🧪' }
   ] as const;
 
   return (
@@ -84,6 +86,10 @@ export default function RemoteExecutionPage() {
               selectedConnection={selectedConnection}
               onConnectionSelect={setSelectedConnection}
             />
+          )}
+
+          {activeTab === 'quality-review' && (
+            <QualityReview />
           )}
         </div>
       </div>

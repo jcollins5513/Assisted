@@ -135,11 +135,13 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
       // Finalize: copy results back
       const finalizeRes = await apiClient.post<any>('/remote-execution/background-removal/finalize', {
         connectionId: selectedConnection,
-        remoteOutputDir
+        remoteOutputDir,
+        originalPaths: uploadedPaths,
       });
       if (!finalizeRes.success) throw new Error(finalizeRes.error || 'Failed to finalize');
 
       const files: Array<{ file: string; url: string }> = finalizeRes.data?.data?.files || finalizeRes.data?.files || [];
+      const assessmentIds: string[] = finalizeRes.data?.data?.assessmentIds || finalizeRes.data?.assessmentIds || [];
 
       // Update jobs with output paths
       setProcessingJobs(prev => prev.map(j => {
@@ -149,6 +151,11 @@ export function BackgroundRemoval({ selectedConnection, onConnectionSelect }: Ba
 
       setStatusMessage('Background removal completed successfully!');
       setStatusType('success');
+
+      if (assessmentIds.length > 0) {
+        setStatusMessage(`Processing complete. ${assessmentIds.length} quality assessment(s) started. Open Quality Review to inspect results.`);
+        setStatusType('info');
+      }
     } catch (err: any) {
       // Mark all current jobs as failed
       setProcessingJobs(prev => prev.map(j => ({ ...j, status: 'failed', error: err?.message || 'Processing failed' })));

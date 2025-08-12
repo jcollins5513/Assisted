@@ -248,25 +248,23 @@ export const fileTransferAPI = {
 
 // Quality Assessment API
 export const qualityAssessmentAPI = {
-  assessQuality: (data: {
-    imagePath: string;
-    originalPath: string;
-    jobId: string;
-  }) => apiClient.post('/quality-assessment/assess', data),
-  
-  getAssessments: (params?: { 
-    page?: number; 
-    limit?: number; 
-    status?: string 
-  }) => apiClient.get('/quality-assessment', { params }),
-  
-  getAssessment: (id: string) => apiClient.get(`/quality-assessment/${id}`),
-  
+  assessBatch: (images: Array<{ imagePath: string; originalPath: string }>) =>
+    apiClient.post('/quality/assess', { images }),
+
+  assessOne: (data: { imagePath: string; originalPath: string }) =>
+    apiClient.post('/quality/assess', data),
+
+  getAssessments: () => apiClient.get('/quality'),
+
+  getAssessment: (id: string) => apiClient.get(`/quality/${id}`),
+
   reviewAssessment: (id: string, data: {
     approved: boolean;
     notes?: string;
     qualityScore?: number;
-  }) => apiClient.post(`/quality-assessment/${id}/review`, data),
+  }) => apiClient.post(`/quality/${id}/review`, data),
+
+  batchReport: (ids: string[]) => apiClient.post('/quality/batch-report', { ids }),
 };
 
 // Social Media API

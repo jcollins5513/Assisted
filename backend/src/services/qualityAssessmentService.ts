@@ -44,6 +44,8 @@ export interface QualityThresholds {
 
 export class QualityAssessmentService extends EventEmitter {
   private assessments: Map<string, QualityAssessment> = new Map();
+  private dataDirectoryPath: string = path.join(__dirname, '../data');
+  private dataFilePath: string = path.join(this.dataDirectoryPath, 'quality-assessments.json');
   private thresholds: QualityThresholds = {
     minimumScore: 70,
     edgeSharpnessThreshold: 75,
@@ -55,6 +57,7 @@ export class QualityAssessmentService extends EventEmitter {
 
   constructor() {
     super();
+    this.loadAssessmentsFromDisk();
   }
 
   // Quality Assessment Management
@@ -85,6 +88,7 @@ export class QualityAssessmentService extends EventEmitter {
 
     this.assessments.set(assessmentId, assessment);
     this.emit('assessmentStarted', assessment);
+    this.saveAssessmentsToDiskSafe();
 
     // Start quality analysis
     this.performQualityAnalysis(assessmentId, options);
@@ -146,6 +150,7 @@ export class QualityAssessmentService extends EventEmitter {
       assessment.status = 'completed';
       assessment.completedAt = new Date();
       this.emit('assessmentCompleted', assessment);
+      this.saveAssessmentsToDiskSafe();
 
     } catch (error) {
       assessment.status = 'failed';
@@ -157,6 +162,7 @@ export class QualityAssessmentService extends EventEmitter {
         actionable: false
       });
       this.emit('assessmentFailed', assessment);
+      this.saveAssessmentsToDiskSafe();
     }
   }
 
@@ -173,28 +179,28 @@ export class QualityAssessmentService extends EventEmitter {
     return metrics;
   }
 
-  private simulateEdgeSharpnessAnalysis(imagePath: string): number {
+  private simulateEdgeSharpnessAnalysis(_imagePath: string): number {
     // Simulate edge sharpness analysis
     // In a real implementation, this would use computer vision algorithms
     const baseScore = 75 + Math.random() * 20; // 75-95 range
     return Math.round(baseScore);
   }
 
-  private simulateBackgroundRemovalAnalysis(imagePath: string, originalPath: string): number {
+  private simulateBackgroundRemovalAnalysis(_imagePath: string, _originalPath: string): number {
     // Simulate background removal quality analysis
     // In a real implementation, this would compare original vs processed
     const baseScore = 80 + Math.random() * 15; // 80-95 range
     return Math.round(baseScore);
   }
 
-  private simulateColorPreservationAnalysis(imagePath: string, originalPath: string): number {
+  private simulateColorPreservationAnalysis(_imagePath: string, _originalPath: string): number {
     // Simulate color preservation analysis
     // In a real implementation, this would analyze color accuracy
     const baseScore = 85 + Math.random() * 10; // 85-95 range
     return Math.round(baseScore);
   }
 
-  private simulateNoiseAnalysis(imagePath: string): number {
+  private simulateNoiseAnalysis(_imagePath: string): number {
     // Simulate noise level analysis (lower is better)
     // In a real implementation, this would detect artifacts and noise
     const noiseLevel = 5 + Math.random() * 15; // 5-20 range
@@ -312,13 +318,16 @@ export class QualityAssessmentService extends EventEmitter {
     }
 
     assessment.reviewed = true;
-    assessment.reviewNotes = reviewData.notes;
+    if (typeof reviewData.notes === 'string') {
+      assessment.reviewNotes = reviewData.notes;
+    }
     
     if (reviewData.qualityScore !== undefined) {
       assessment.score = reviewData.qualityScore;
     }
 
     this.emit('assessmentReviewed', assessment);
+    this.saveAssessmentsToDiskSafe();
   }
 
   // Batch Reporting
@@ -402,6 +411,7 @@ export class QualityAssessmentService extends EventEmitter {
   updateThresholds(newThresholds: Partial<QualityThresholds>): void {
     this.thresholds = { ...this.thresholds, ...newThresholds };
     this.emit('thresholdsUpdated', this.thresholds);
+    // Not persisted separately; callers can persist thresholds elsewhere if needed
   }
 
   getThresholds(): QualityThresholds {
@@ -446,4 +456,59 @@ export class QualityAssessmentService extends EventEmitter {
         : 0
     };
   }
+
+  // Persistence
+  private loadAssessmentsFromDisk(): void {
+    try {
+      if (!fs.existsSync(this.dataDirectoryPath)) {
+        fs.mkdirSync(this.dataDirectoryPath, { recursive: true });
+      }
+      if (!fs.existsSync(this.dataFilePath)) {
+        fs.writeFileSync(this.dataFilePath, JSON.stringify([], null, 2), 'utf8');
+        return;
+      }
+      const raw = fs.readFileSync(this.dataFilePath, 'utf8');
+      if (!raw.trim()) return;
+      const arr = JSON.parse(raw) as any[];
+      arr.forEach((obj) => {
+        const assessment: QualityAssessment = {
+          id: obj.id,
+          imagePath: obj.imagePath,
+          originalPath: obj.originalPath,
+          score: obj.score,
+          status: obj.status,
+          metrics: obj.metrics,
+          suggestions: obj.suggestions || [],
+          reviewed: !!obj.reviewed,
+          reviewNotes: obj.reviewNotes,
+          createdAt: obj.createdAt ? new Date(obj.createdAt) : new Date(),
+          completedAt: obj.completedAt ? new Date(obj.completedAt) : undefined as any,
+        };
+        this.assessments.set(assessment.id, assessment);
+      });
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load quality assessments:', error);
+    }
+  }
+
+  private saveAssessmentsToDiskSafe(): void {
+    try {
+      const list = Array.from(this.assessments.values()).map(a => ({
+        ...a,
+        createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : (a.createdAt as any),
+        completedAt: a.completedAt instanceof Date ? a.completedAt.toISOString() : (a.completedAt as any),
+      }));
+      if (!fs.existsSync(this.dataDirectoryPath)) {
+        fs.mkdirSync(this.dataDirectoryPath, { recursive: true });
+      }
+      fs.writeFileSync(this.dataFilePath, JSON.stringify(list, null, 2), 'utf8');
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to save quality assessments:', error);
+    }
+  }
 }
+
+// Export a shared singleton so routes and other services operate on the same instance
+export const qualityAssessmentService = new QualityAssessmentService();

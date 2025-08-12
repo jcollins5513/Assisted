@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/errorHandler';
 import path from 'path'; // Added missing import for path
 import fs from 'fs';
+import { qualityAssessmentService } from '../services/qualityAssessmentService';
 
 const router = Router();
 const remoteService = new RemoteExecutionService();
@@ -364,7 +365,7 @@ export default router;
 // Finalize background removal: copy results back to server uploads and return URLs
 router.post('/background-removal/finalize', authMiddleware, async (req, res, next) => {
   try {
-    const { connectionId, remoteOutputDir } = req.body as { connectionId: string; remoteOutputDir: string };
+    const { connectionId, remoteOutputDir, originalPaths } = req.body as { connectionId: string; remoteOutputDir: string; originalPaths?: string[] };
     if (!connectionId || !remoteOutputDir) {
       return next(createError('connectionId and remoteOutputDir are required', 400));
     }
@@ -385,7 +386,36 @@ router.post('/background-removal/finalize', authMiddleware, async (req, res, nex
         url: `/uploads/processed/${f}`
       }));
 
-    res.json({ success: true, data: { files } });
+    // Attempt to pair processed files with originals and trigger quality assessments
+    let assessmentIds: string[] = [];
+    try {
+      if (Array.isArray(originalPaths) && originalPaths.length > 0) {
+        // Pair by base filename without extension
+        const pairs: Array<{ imagePath: string; originalPath: string }> = [];
+        const originalsByBase = new Map<string, string>();
+        for (const orig of originalPaths) {
+          const base = path.parse(orig).name.toLowerCase();
+          originalsByBase.set(base, orig);
+        }
+        for (const f of files) {
+          const base = path.parse(f.file).name.toLowerCase().replace(/_no_bg$/, '');
+          const orig = originalsByBase.get(base);
+          if (orig) {
+            const processedLocalPath = path.join(localProcessedDir, f.file);
+            pairs.push({ imagePath: processedLocalPath, originalPath: orig });
+          }
+        }
+        if (pairs.length > 0) {
+          assessmentIds = await qualityAssessmentService.batchAssessQuality(pairs, { parallel: true, detailedAnalysis: true });
+        }
+      }
+    } catch (e) {
+      // Swallow assessment errors to not block finalize
+      // eslint-disable-next-line no-console
+      console.error('Quality assessment during finalize failed:', e);
+    }
+
+    res.json({ success: true, data: { files, assessmentIds } });
   } catch (error) {
     next(createError(`Failed to finalize background removal: ${error instanceof Error ? error.message : 'Unknown error'}`, 500));
   }

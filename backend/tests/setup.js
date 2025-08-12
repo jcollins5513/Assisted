@@ -25,6 +25,7 @@ beforeAll(async () => {
   global.mongod = await MongoMemoryServer.create();
   const uri = global.mongod.getUri();
   process.env.TEST_DATABASE_URL = uri;
+  process.env.MONGODB_URI = uri;
   
   // Set longer timeout for database operations
   jest.setTimeout(30000);
@@ -139,18 +140,23 @@ jest.mock('fs', () => ({
 }));
 
 // Mock Redis for testing
-jest.mock('redis', () => ({
-  createClient: jest.fn(() => ({
-    connect: jest.fn(),
-    disconnect: jest.fn(),
-    get: jest.fn(),
-    set: jest.fn(),
-    del: jest.fn(),
-    exists: jest.fn(),
-    expire: jest.fn(),
-    on: jest.fn(),
-  })),
-}));
+try {
+  // If redis is installed, mock it; otherwise ignore
+  jest.mock('redis', () => ({
+    createClient: jest.fn(() => ({
+      connect: jest.fn(),
+      disconnect: jest.fn(),
+      get: jest.fn(),
+      set: jest.fn(),
+      del: jest.fn(),
+      exists: jest.fn(),
+      expire: jest.fn(),
+      on: jest.fn(),
+    })),
+  }));
+} catch (e) {
+  // ignore
+}
 
 // Mock Socket.IO for testing
 jest.mock('socket.io', () => ({
@@ -164,21 +170,23 @@ jest.mock('socket.io', () => ({
 }));
 
 // Mock external API clients
-jest.mock('openai', () => ({
-  OpenAI: jest.fn(() => ({
-    chat: {
-      completions: {
-        create: jest.fn().mockResolvedValue({
-          choices: [{
-            message: {
-              content: 'Mock AI response'
-            }
-          }]
-        })
+try {
+  jest.mock('openai', () => ({
+    OpenAI: jest.fn(() => ({
+      chat: {
+        completions: {
+          create: jest.fn().mockResolvedValue({
+            choices: [{
+              message: { content: 'Mock AI response' }
+            }]
+          })
+        }
       }
-    }
-  }))
-}));
+    }))
+  }));
+} catch (e) {
+  // ignore
+}
 
 // Helper functions for tests
 global.createTestUser = async (userData = {}) => {
